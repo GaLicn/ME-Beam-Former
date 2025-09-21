@@ -1,0 +1,27 @@
+{
+  "variants": {
+    "facing=south,status=off":    { "model": "me_beam_former:block/beam_former_block" },
+    "facing=south,status=on":     { "model": "me_beam_former:block/beam_former_block" },
+    "facing=south,status=beaming": { "model": "me_beam_former:block/beam_former_block" },
+
+    "facing=north,status=off":    { "model": "me_beam_former:block/beam_former_block", "y": 180 },
+    "facing=north,status=on":     { "model": "me_beam_former:block/beam_former_block", "y": 180 },
+    "facing=north,status=beaming": { "model": "me_beam_former:block/beam_former_block", "y": 180 },
+
+    "facing=west,status=off":     { "model": "me_beam_former:block/beam_former_block", "y": 90 },
+    "facing=west,status=on":      { "model": "me_beam_former:block/beam_former_block", "y": 90 },
+    "facing=west,status=beaming":  { "model": "me_beam_former:block/beam_former_block", "y": 90 },
+
+    "facing=east,status=off":     { "model": "me_beam_former:block/beam_former_block", "y": 270 },
+    "facing=east,status=on":      { "model": "me_beam_former:block/beam_former_block", "y": 270 },
+    "facing=east,status=beaming":  { "model": "me_beam_former:block/beam_former_block", "y": 270 },
+
+    "facing=up,status=off":       { "model": "me_beam_former:block/beam_former_block", "x": -90 },
+    "facing=up,status=on":        { "model": "me_beam_former:block/beam_former_block", "x": -90 },
+    "facing=up,status=beaming":    { "model": "me_beam_former:block/beam_former_block", "x": -90 },
+
+    "facing=down,status=off":     { "model": "me_beam_former:block/beam_former_block", "x": 90 },
+    "facing=down,status=on":      { "model": "me_beam_former:block/beam_former_block", "x": 90 },
+    "facing=down,status=beaming":  { "model": "me_beam_former:block/beam_former_block", "x": 90 }
+  }
+}

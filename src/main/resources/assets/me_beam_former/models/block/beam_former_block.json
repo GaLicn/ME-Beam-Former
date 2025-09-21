@@ -1,0 +1,23 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "0": "me_beam_former:block/beam_former_block_face",
+    "1": "me_beam_former:block/beam_former_block_back",
+    "2": "me_beam_former:block/beam_former_block_other",
+    "particle": "me_beam_former:block/beam_former_block_face"
+  },
+  "elements": [
+    {
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "north": { "uv": [0, 0, 16, 16], "texture": "#1" },
+        "east":  { "uv": [0, 0, 16, 16], "texture": "#2" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#0" },
+        "west":  { "uv": [0, 0, 16, 16], "texture": "#2" },
+        "up":    { "uv": [0, 0, 16, 16], "texture": "#2" },
+        "down":  { "uv": [0, 0, 16, 16], "texture": "#2" }
+      }
+    }
+  ]
+}

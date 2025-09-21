@@ -2,6 +2,7 @@ package com.mebeamformer;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
@@ -34,6 +35,11 @@ import com.mebeamformer.part.BeamFormerPart;
 import appeng.api.parts.PartModels; // AE2 part model registry (client baked models)
 import appeng.items.parts.PartModelsHelper; // helper to collect models from @PartModels
 
+import net.minecraft.world.level.block.entity.BlockEntityType;
+import com.mebeamformer.block.BeamFormerBlock;
+import com.mebeamformer.blockentity.BeamFormerBlockEntity;
+import com.mebeamformer.client.render.BeamFormerBER;
+
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
 public class ME_Beam_Former {
@@ -46,6 +52,10 @@ public class ME_Beam_Former {
     public static final DeferredRegister<Block> BLOCKS = DeferredRegister.create(ForgeRegistries.BLOCKS, MODID);
     // Create a Deferred Register to hold Items which will all be registered under the "me_beam_former" namespace
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
+    // Blocks
+    public static final DeferredRegister<Block> MY_BLOCKS = BLOCKS; // alias
+    // Block Entities
+    public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, MODID);
     // Create a Deferred Register to hold CreativeModeTabs which will all be registered under the "examplemod" namespace
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
@@ -62,6 +72,14 @@ public class ME_Beam_Former {
     public static final RegistryObject<Item> BEAM_FORMER_PART_ITEM = ITEMS.register("beam_former_part", () ->
             new PartItem<>(new Item.Properties(), BeamFormerPart.class, BeamFormerPart::new)
     );
+
+    // Beam Former Block + Item + BlockEntity
+    public static final RegistryObject<Block> BEAM_FORMER_BLOCK = MY_BLOCKS.register("beam_former_block",
+            () -> new BeamFormerBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f, 6.0f)));
+    public static final RegistryObject<Item> BEAM_FORMER_BLOCK_ITEM = ITEMS.register("beam_former_block",
+            () -> new BlockItem(BEAM_FORMER_BLOCK.get(), new Item.Properties()));
+    public static final RegistryObject<BlockEntityType<BeamFormerBlockEntity>> BEAM_FORMER_BE = BLOCK_ENTITIES.register("beam_former_block",
+            () -> BlockEntityType.Builder.of(BeamFormerBlockEntity::new, BEAM_FORMER_BLOCK.get()).build(null));
 
     // Creates a creative tab with the id "examplemod:example_tab" for the example item, that is placed after the combat tab
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
@@ -83,6 +101,7 @@ public class ME_Beam_Former {
         BLOCKS.register(modEventBus);
         // Register the Deferred Register to the mod event bus so items get registered
         ITEMS.register(modEventBus);
+        BLOCK_ENTITIES.register(modEventBus);
         // Register the Deferred Register to the mod event bus so tabs get registered
         CREATIVE_MODE_TABS.register(modEventBus);
 
@@ -115,6 +134,22 @@ public class ME_Beam_Former {
         LOGGER.info(Config.magicNumberIntroduction + Config.magicNumber);
 
         Config.items.forEach((item) -> LOGGER.info("ITEM >> {}", item.toString()));
+
+        // 绑定 AEBaseEntityBlock 的方块实体类型与 tickers，避免 blockEntityClass 为空导致的 NPE
+        event.enqueueWork(() -> {
+            try {
+                if (BEAM_FORMER_BLOCK.get() instanceof BeamFormerBlock bf) {
+                    bf.setBlockEntity(
+                            com.mebeamformer.blockentity.BeamFormerBlockEntity.class,
+                            BEAM_FORMER_BE.get(),
+                            com.mebeamformer.blockentity.BeamFormerBlockEntity::clientTick,
+                            com.mebeamformer.blockentity.BeamFormerBlockEntity::serverTick
+                    );
+                }
+            } catch (Throwable t) {
+                LOGGER.error("Failed to bind BlockEntity to BeamFormerBlock", t);
+            }
+        });
     }
 
     // Add the example block item to the building blocks tab
@@ -122,6 +157,9 @@ public class ME_Beam_Former {
     {
         if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS)
             event.accept(EXAMPLE_BLOCK_ITEM);
+        if (event.getTabKey() == CreativeModeTabs.REDSTONE_BLOCKS) {
+            event.accept(BEAM_FORMER_BLOCK_ITEM);
+        }
     }
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
@@ -140,6 +178,11 @@ public class ME_Beam_Former {
             // Some client setup code
             LOGGER.info("HELLO FROM CLIENT SETUP");
             LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
+
+            // Register BER for our block entity
+            event.enqueueWork(() -> {
+                BlockEntityRenderers.register(BEAM_FORMER_BE.get(), ctx -> new BeamFormerBER(ctx));
+            });
         }
     }
 }
