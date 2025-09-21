@@ -1,11 +1,11 @@
 {
-  "credit": "Made with Blockbench",
+  "credit": "Migrated from NAE2",
   "parent": "block/block",
   "textures": {
-    "particle": "appliedenergistics2:blocks/wireless_access_point_inside",
-    "inside": "appliedenergistics2:blocks/wireless_access_point_inside",
-    "sides": "appliedenergistics2:parts/monitor_sides",
-    "sidesStatus": "appliedenergistics2:parts/monitor_sides_status"
+    "particle": "ae2:block/wireless_access_point_inside",
+    "inside": "ae2:block/wireless_access_point_inside",
+    "sides": "ae2:part/monitor_sides",
+    "sidesStatus": "ae2:part/monitor_sides_status"
   },
   "elements": [
     {

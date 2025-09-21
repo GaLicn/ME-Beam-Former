@@ -63,8 +63,21 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public void getBoxes(IPartCollisionHelper bch) {
-        // 使用简单碰撞盒，后续按旧版形状还原
-        bch.addBox(6, 6, 6, 10, 10, 10);
+        // 采用旧版 NAE2 的碰撞盒定义，使放置预览与实际模型一致
+        bch.addBox(10, 10, 12, 6, 6, 11);
+        bch.addBox(10, 10, 13, 6, 6, 12);
+        bch.addBox(10, 6, 14, 6, 5, 13);
+        bch.addBox(11, 9, 17, 10, 7, 14);
+        bch.addBox(9, 11, 17, 7, 10, 14);
+        bch.addBox(6, 9, 17, 5, 7, 14);
+        bch.addBox(9, 6, 17, 7, 5, 14);
+        bch.addBox(10, 11, 14, 6, 10, 13);
+        bch.addBox(6, 10, 14, 5, 6, 13);
+        bch.addBox(11, 9, 13, 10, 7, 12);
+        bch.addBox(6, 9, 13, 5, 7, 12);
+        bch.addBox(9, 6, 13, 7, 5, 12);
+        bch.addBox(9, 11, 13, 7, 10, 12);
+        bch.addBox(11, 10, 14, 10, 6, 13);
     }
 
     @Override
