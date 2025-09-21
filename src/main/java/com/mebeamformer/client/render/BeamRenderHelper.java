@@ -37,6 +37,17 @@ public final class BeamRenderHelper {
             case UP    -> dy =  length;
         }
 
+        // 方案A：HSV 提亮 — 保留原有色相与饱和度，只将明度 V 拉满为 1.0，确保颜色与线缆一致但更亮
+        {
+            float[] hsv = rgbToHsv(r, g, b);
+            float h = hsv[0], s = hsv[1];
+            float v = 1.0f; // 仅提升明度，不改变饱和度
+            float[] rgb = hsvToRgb(h, s, v);
+            r = rgb[0];
+            g = rgb[1];
+            b = rgb[2];
+        }
+
         poseStack.pushPose();
         poseStack.translate(0.5, 0.5, 0.5);
 
@@ -51,13 +62,13 @@ public final class BeamRenderHelper {
         float v1 = 1f;
 
         float aOuter = 0.40f; // slight outer glow (less transparent)
-        float aInner = 0.90f;  // inner core (less transparent)
+        float aInner = 1.00f;  // inner core (more opaque to avoid looking dim)
 
         // Build a cylindrical strip: more segments -> smoother cylinder
         final int SEGMENTS = 16;
         // Multi-shell glow: outer shells first (larger radius, lower alpha), inner last (highest alpha)
         final float[] SHELL_SCALE = new float[] { 1.8f, 1.4f, 1.0f };
-        final float[] SHELL_ALPHA = new float[] { 0.15f, 0.35f, 0.90f };
+        final float[] SHELL_ALPHA = new float[] { 0.12f, 0.28f, 1.00f };
         // Axis vector
         float ax = (float) dx;
         float ay = (float) dy;
@@ -150,5 +161,42 @@ public final class BeamRenderHelper {
         quad(pose, normalMat, vc, x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4, r, g, b, a, u0, v0, u1, v1, light, overlay, nx, ny, nz);
         // reverse order with inverted normal
         quad(pose, normalMat, vc, x4, y4, z4, x3, y3, z3, x2, y2, z2, x1, y1, z1, r, g, b, a, u0, v0, u1, v1, light, overlay, -nx, -ny, -nz);
+    }
+
+    // --------- Color helpers: RGB <-> HSV (all channels in 0..1) ---------
+    private static float[] rgbToHsv(float r, float g, float b) {
+        float max = Math.max(r, Math.max(g, b));
+        float min = Math.min(r, Math.min(g, b));
+        float delta = max - min;
+        float h;
+        if (delta == 0f) {
+            h = 0f;
+        } else if (max == r) {
+            h = ((g - b) / delta) % 6f;
+        } else if (max == g) {
+            h = ((b - r) / delta) + 2f;
+        } else {
+            h = ((r - g) / delta) + 4f;
+        }
+        h /= 6f;
+        if (h < 0f) h += 1f;
+        float s = max == 0f ? 0f : (delta / max);
+        float v = max;
+        return new float[]{h, s, v};
+    }
+
+    private static float[] hsvToRgb(float h, float s, float v) {
+        float c = v * s;
+        float x = c * (1 - Math.abs(((h * 6f) % 2f) - 1f));
+        float m = v - c;
+        float rf, gf, bf;
+        float hp = h * 6f;
+        if (hp < 1)      { rf = c; gf = x; bf = 0; }
+        else if (hp < 2) { rf = x; gf = c; bf = 0; }
+        else if (hp < 3) { rf = 0; gf = c; bf = x; }
+        else if (hp < 4) { rf = 0; gf = x; bf = c; }
+        else if (hp < 5) { rf = x; gf = 0; bf = c; }
+        else             { rf = c; gf = 0; bf = x; }
+        return new float[]{rf + m, gf + m, bf + m};
     }
 }
