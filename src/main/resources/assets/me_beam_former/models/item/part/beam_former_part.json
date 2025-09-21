@@ -2,11 +2,11 @@
   "credit": "Migrated from NAE2",
   "parent": "block/block",
   "textures": {
-    "particle": "appliedenergistics2:blocks/wireless_access_point_inside",
-    "inside": "appliedenergistics2:blocks/wireless_access_point_inside",
-    "sides": "appliedenergistics2:parts/monitor_sides",
-    "sidesStatus": "appliedenergistics2:parts/monitor_sides_status",
-    "indicator": "appliedenergistics2:parts/monitor_sides_status_off",
+    "particle": "ae2:blocks/wireless_access_point_inside",
+    "inside": "ae2:blocks/wireless_access_point_inside",
+    "sides": "ae2:parts/monitor_sides",
+    "sidesStatus": "ae2:parts/monitor_sides_status",
+    "indicator": "ae2:parts/monitor_sides_status_off",
     "glass": "me_beam_former:part/beam_former_glass"
   },
   "elements": [

@@ -34,6 +34,8 @@ public final class BeamRenderHelper {
 
     private BeamRenderHelper() {}
 
+    // 使用内置 RenderType，避免访问受保护的 RenderStateShard 常量造成的编译失败。
+
     public static void renderColoredBeam(PoseStack poseStack,
                                          MultiBufferSource buffers,
                                          Direction dir,
@@ -67,6 +69,8 @@ public final class BeamRenderHelper {
             case UP    -> dy =  length;
         }
 
+        // 预留位置（此前在这里绘制外圈光环，现合并到统一渲染循环中以简化作用域）
+
         // 方案A：HSV 提亮 — 保留原有色相与饱和度，只将明度 V 拉满为 1.0，确保颜色与线缆一致但更亮
         {
             float[] hsv = rgbToHsv(r, g, b);
@@ -95,18 +99,18 @@ public final class BeamRenderHelper {
 
             poseStack.pushPose();
             poseStack.translate(0.5, 0.5, 0.5);
-            // 将光束起点从方块中心推进到贴近且略微越过方块外表面，避免与方块表面产生深度冲突造成“断开”缝隙
-            // 0.5 刚好到达方块外表面，再加一个极小偏移 0.001 以保证在表面之外
-            final double START_EPS = 0.501;
-            poseStack.translate(dir.getStepX() * START_EPS, dir.getStepY() * START_EPS, dir.getStepZ() * START_EPS);
-
-            // 使用发光渲染类型以获得更“霓虹”的明亮视觉
-            VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
-            VertexConsumer vcTranslucent = buffers.getBuffer(RenderType.entityTranslucent(BEAM_TEX));
+            // 新模型不是完整方块：将光束起点相对“朝向”向后偏移 0.75 格
+            // 从方块中心到外表面为 +0.5，向后 0.75 即中心沿 -dir 偏移 0.25（0.5 - 0.75 = -0.25）
+            final double BACK_OFFSET = 0.75; // blocks
+            final double START = 0.5 - BACK_OFFSET; // -0.25
+            poseStack.translate(dir.getStepX() * START, dir.getStepY() * START, dir.getStepZ() * START);
 
             var last = poseStack.last();
             Matrix4f pose = last.pose();
             var normalMat = last.normal();
+
+            // 统一获取缓冲（发光半透明）
+            VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
 
             // 固定 UV，取消滚动动画，避免出现暗条纹；UV 覆盖整个面即可
             float v0 = 0f;
@@ -142,6 +146,7 @@ public final class BeamRenderHelper {
         long gt = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0L;
         float flicker = 0.80f + 0.20f * (float) Math.sin(gt * 0.45);
 
+        // 单循环按壳层从外到内绘制；对外圈叠加轻微轴向偏移，缓解贴面；统一使用发光半透明缓冲
         for (int shell = 0; shell < SHELL_SCALE.length; shell++) {
             float radius = half * SHELL_SCALE[shell];
             float alpha = SHELL_ALPHA[shell];
@@ -162,13 +167,23 @@ public final class BeamRenderHelper {
                 float sy1 = uy * c1 * radius + vy * s1 * radius;
                 float sz1 = uz * c1 * radius + vz * s1 * radius;
 
-                // end points
-                float ex0 = sx0 + ax;
-                float ey0 = sy0 + ay;
-                float ez0 = sz0 + az;
-                float ex1 = sx1 + ax;
-                float ey1 = sy1 + ay;
-                float ez1 = sz1 + az;
+                // 轴向偏移：对外圈壳层沿光束轴做极小正向偏移，避免与核心/模型贴面
+                float EPS_SHIFT = 0.01f;
+                float ox = 0f, oy = 0f, oz = 0f;
+                // shell<=1 为外圈光环
+                if (shell <= 1) {
+                    ox = dir.getStepX() * EPS_SHIFT;
+                    oy = dir.getStepY() * EPS_SHIFT;
+                    oz = dir.getStepZ() * EPS_SHIFT;
+                }
+
+                // end points（添加轴向偏移）
+                float ex0 = sx0 + ax + ox;
+                float ey0 = sy0 + ay + oy;
+                float ez0 = sz0 + az + oz;
+                float ex1 = sx1 + ax + ox;
+                float ey1 = sy1 + ay + oy;
+                float ez1 = sz1 + az + oz;
 
                 // pure color: avoid lighting variation by using zero normals
                 float nx = 0f, ny = 0f, nz = 0f;
@@ -177,7 +192,7 @@ public final class BeamRenderHelper {
                 float u0 = 0f;
                 float u1 = 1f;
 
-                // emissive for all shells to keep bright
+                // 渲染目标：统一使用发光半透明缓冲
                 VertexConsumer targetVc = vcEmissive;
 
                 // white hot cores (shell==3, shell==4) use white; colored core (shell==2) is slightly desaturated toward white for a "bright to white" gradient

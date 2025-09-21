@@ -3,7 +3,7 @@
   "parent": "block/block",
   "ambientocclusion": false,
   "textures": {
-    "indicator": "appliedenergistics2:parts/monitor_sides_status_has_channel"
+    "indicator": "ae2:parts/monitor_sides_status_has_channel"
   },
   "elements": [
     {
