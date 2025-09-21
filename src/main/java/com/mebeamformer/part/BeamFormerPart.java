@@ -255,9 +255,9 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         this.connection = GridHelper.createConnection(a, b);
         this.other = target;
         target.other = this;
-        // 一端显示长度，另一端长度为 0（与旧版一致）
+        // 为了保证任意视角/位置都可见：两端都渲染完整长度，避免因视锥裁剪只渲染近端导致远端不可见
         this.beamLength = path.size();
-        target.beamLength = 0;
+        target.beamLength = path.size();
         // 同步隐藏标志
         if (this.hideBeam || target.hideBeam) {
             this.hideBeam = true;
