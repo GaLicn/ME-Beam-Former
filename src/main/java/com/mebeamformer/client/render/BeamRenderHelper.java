@@ -59,36 +59,45 @@ public final class BeamRenderHelper {
         {
             float[] hsv = rgbToHsv(r, g, b);
             float h = hsv[0], s = hsv[1];
-            // 提升饱和度，并设置下限，避免偏灰
-            s = Math.min(1.0f, Math.max(s * COLOR_SAT_BOOST, COLOR_SAT_MIN));
-            float v = 1.0f; // 拉满明度
-            float[] rgb = hsvToRgb(h, s, v);
-            r = rgb[0];
-            g = rgb[1];
-            b = rgb[2];
-            // 进一步提升亮度与对比度
-            r = adjustChannel(r);
-            g = adjustChannel(g);
-            b = adjustChannel(b);
-        }
+            // 检测近似无色（白/灰），避免被强制上饱和
+            boolean isAchromatic = s < 0.12f || (Math.abs(r - g) < 0.05f && Math.abs(g - b) < 0.05f);
+            if (isAchromatic) {
+                // 对白色/灰色：直接使用纯白，获得干净的白色光束
+                r = g = b = 1.0f;
+            } else {
+                // 彩色：提升饱和度，并设置下限，避免偏灰
+                s = Math.min(1.0f, Math.max(s * COLOR_SAT_BOOST, COLOR_SAT_MIN));
+                float v = 1.0f; // 拉满明度
+                float[] rgb = hsvToRgb(h, s, v);
+                r = rgb[0];
+                g = rgb[1];
+                b = rgb[2];
+                // 进一步提升亮度与对比度
+                r = adjustChannel(r);
+                g = adjustChannel(g);
+                b = adjustChannel(b);
+            }
+            // 将 achromatic 标志在后续着色时使用
+            // 通过局部 final 变量捕获
+            final boolean ACHRO = isAchromatic;
 
-        poseStack.pushPose();
-        poseStack.translate(0.5, 0.5, 0.5);
+            poseStack.pushPose();
+            poseStack.translate(0.5, 0.5, 0.5);
 
-        // 使用发光渲染类型以获得更“霓虹”的明亮视觉
-        VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
-        VertexConsumer vcTranslucent = buffers.getBuffer(RenderType.entityTranslucent(BEAM_TEX));
+            // 使用发光渲染类型以获得更“霓虹”的明亮视觉
+            VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
+            VertexConsumer vcTranslucent = buffers.getBuffer(RenderType.entityTranslucent(BEAM_TEX));
 
-        var last = poseStack.last();
-        Matrix4f pose = last.pose();
-        var normalMat = last.normal();
+            var last = poseStack.last();
+            Matrix4f pose = last.pose();
+            var normalMat = last.normal();
 
-        // 固定 UV，取消滚动动画，避免出现暗条纹；UV 覆盖整个面即可
-        float v0 = 0f;
-        float v1 = 1f;
+            // 固定 UV，取消滚动动画，避免出现暗条纹；UV 覆盖整个面即可
+            float v0 = 0f;
+            float v1 = 1f;
 
-        float aOuter = 0.40f; // legacy param (kept for reference)
-        float aInner = 1.00f;  // core opacity
+            float aOuter = 0.40f; // legacy param (kept for reference)
+            float aInner = 1.00f;  // core opacity
 
         // Build a cylindrical strip: more segments -> smoother cylinder
         final int SEGMENTS = 20;
@@ -117,11 +126,11 @@ public final class BeamRenderHelper {
         long gt = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0L;
         float flicker = 0.80f + 0.20f * (float) Math.sin(gt * 0.45);
 
-        for (int s = 0; s < SHELL_SCALE.length; s++) {
-            float radius = half * SHELL_SCALE[s];
-            float alpha = SHELL_ALPHA[s];
-            // pulsate only for halos (s=0,1)
-            if (s <= 1) alpha *= flicker;
+        for (int shell = 0; shell < SHELL_SCALE.length; shell++) {
+            float radius = half * SHELL_SCALE[shell];
+            float alpha = SHELL_ALPHA[shell];
+            // pulsate only for halos (shell=0,1)
+            if (shell <= 1) alpha *= flicker;
 
             for (int i = 0; i < SEGMENTS; i++) {
                 double a0 = (2 * Math.PI * i) / SEGMENTS;
@@ -155,11 +164,14 @@ public final class BeamRenderHelper {
                 // emissive for all shells to keep bright
                 VertexConsumer targetVc = vcEmissive;
 
-                // white hot cores (s==3, s==4) use white; colored core (s==2) is slightly desaturated toward white for a "bright to white" gradient
+                // white hot cores (shell==3, shell==4) use white; colored core (shell==2) is slightly desaturated toward white for a "bright to white" gradient
                 float cr, cg, cb;
-                if (s >= 3) {
+                if (ACHRO) {
+                    // 白/灰输入：所有壳层使用纯白，保证最终视觉为白色
                     cr = 1f; cg = 1f; cb = 1f;
-                } else if (s == 2) {
+                } else if (shell >= 3) {
+                    cr = 1f; cg = 1f; cb = 1f;
+                } else if (shell == 2) {
                     // mix color with white by 30%
                     float mix = 0.25f; // 降低向白混合，保持颜色饱和
                     cr = r * (1f - mix) + 1f * mix;
@@ -181,6 +193,7 @@ public final class BeamRenderHelper {
         }
 
         poseStack.popPose();
+    }
     }
 
     private static void quad(Matrix4f pose, org.joml.Matrix3f normalMat, VertexConsumer vc,
