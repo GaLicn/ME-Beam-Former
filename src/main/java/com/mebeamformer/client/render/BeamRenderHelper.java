@@ -40,11 +40,23 @@ public final class BeamRenderHelper {
                                          double length,
                                          float r, float g, float b,
                                          int light, int overlay) {
+        // 兼容旧调用：使用默认最小厚度
+        renderColoredBeam(poseStack, buffers, dir, length, r, g, b, light, overlay, MIN_THICKNESS);
+    }
+
+    // 新增：允许指定光束粗细（单位：方块尺寸，0.0~1.0，典型 0.15~0.30）
+    public static void renderColoredBeam(PoseStack poseStack,
+                                         MultiBufferSource buffers,
+                                         Direction dir,
+                                         double length,
+                                         float r, float g, float b,
+                                         int light, int overlay,
+                                         float thickness) {
         if (length <= 0) return;
 
         // Render a beacon-style translucent beam with animated texture.
         // Use small square cross-section around the center and extend along dir.
-        final float half = MIN_THICKNESS / 2f;
+        final float half = Math.max(0.001f, thickness) / 2f;
         double dx = 0, dy = 0, dz = 0;
         switch (dir) {
             case NORTH -> dz = -length;
@@ -83,6 +95,10 @@ public final class BeamRenderHelper {
 
             poseStack.pushPose();
             poseStack.translate(0.5, 0.5, 0.5);
+            // 将光束起点从方块中心推进到贴近且略微越过方块外表面，避免与方块表面产生深度冲突造成“断开”缝隙
+            // 0.5 刚好到达方块外表面，再加一个极小偏移 0.001 以保证在表面之外
+            final double START_EPS = 0.501;
+            poseStack.translate(dir.getStepX() * START_EPS, dir.getStepY() * START_EPS, dir.getStepZ() * START_EPS);
 
             // 使用发光渲染类型以获得更“霓虹”的明亮视觉
             VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));

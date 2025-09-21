@@ -11,6 +11,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import static com.mebeamformer.block.BeamFormerBlock.STATUS;
+import appeng.api.implementations.blockentities.IColorableBlockEntity;
+import appeng.api.util.AEColor;
 
 public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity> {
     public BeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
@@ -32,9 +34,25 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
         if (!isPathClearForRender(level, pos, dir, checkLen)) return;
 
-        float r = 1f, g = 1f, b = 1f; // 先用白色光束
+        // 颜色：尝试从背面相邻的线缆总线获取 AE 颜色（中等变体），否则默认为白色
+        float r = 1f, g = 1f, b = 1f;
+        BlockPos back = pos.relative(dir.getOpposite());
+        var backBe = level.getBlockEntity(back);
+        if (backBe instanceof IColorableBlockEntity cbe) {
+            AEColor color = cbe.getColor();
+            if (color != null) {
+                int hex = color.mediumVariant;
+                float scale = 255f;
+                r = ((hex >> 16) & 0xFF) / scale;
+                g = ((hex >> 8) & 0xFF) / scale;
+                b = (hex & 0xFF) / scale;
+            }
+        }
+
+        // 方块形态使用更粗的光束（例如 0.32f）
+        float thickness = 0.32f;
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
-                poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay);
+                poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay, thickness);
     }
 
     private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {
