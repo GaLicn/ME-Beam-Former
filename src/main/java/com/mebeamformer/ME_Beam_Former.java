@@ -75,7 +75,12 @@ public class ME_Beam_Former {
 
     // Beam Former Block + Item + BlockEntity
     public static final RegistryObject<Block> BEAM_FORMER_BLOCK = MY_BLOCKS.register("beam_former_block",
-            () -> new BeamFormerBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f, 6.0f)));
+            () -> new BeamFormerBlock(BlockBehaviour.Properties
+                    .of()
+                    .mapColor(MapColor.METAL)
+                    .strength(3.0f, 6.0f)
+                    .noOcclusion() // 非完整方块：禁用几何遮挡，避免错误的邻面裁剪/透视
+            ));
     public static final RegistryObject<Item> BEAM_FORMER_BLOCK_ITEM = ITEMS.register("beam_former_block",
             () -> new BlockItem(BEAM_FORMER_BLOCK.get(), new Item.Properties()));
     public static final RegistryObject<BlockEntityType<BeamFormerBlockEntity>> BEAM_FORMER_BE = BLOCK_ENTITIES.register("beam_former_block",
@@ -182,6 +187,11 @@ public class ME_Beam_Former {
             // Register BER for our block entity
             event.enqueueWork(() -> {
                 BlockEntityRenderers.register(BEAM_FORMER_BE.get(), ctx -> new BeamFormerBER(ctx));
+                // 非完整方块模型：使用 cutout 渲染层，匹配模型中的 render_type: "cutout"
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        BEAM_FORMER_BLOCK.get(),
+                        net.minecraft.client.renderer.RenderType.cutout()
+                );
             });
         }
     }

@@ -2,8 +2,10 @@ package com.mebeamformer.block;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -17,6 +19,9 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.util.StringRepresentable;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
 import com.mebeamformer.blockentity.BeamFormerBlockEntity;
@@ -88,5 +93,44 @@ public class BeamFormerBlock extends AEBaseEntityBlock<BeamFormerBlockEntity> {
     @Override
     public boolean hasAnalogOutputSignal(BlockState state) {
         return false;
+    }
+
+    // 非完整方块的可视/遮挡与采光修正，避免看穿或相邻面错误被裁剪
+    @Override
+    public boolean useShapeForLightOcclusion(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
+        // 返回空遮挡形状，配合 noOcclusion 防止错误遮挡与邻面裁剪
+        return Shapes.empty();
+    }
+
+    @Override
+    public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
+        // 允许天空光穿过非完整几何，避免出现阴影块的视觉瑕疵
+        return true;
+    }
+
+    // 可选：提供更贴近模型的大致选择框，避免完全方块造成的误选
+    private static final VoxelShape SELECTION = Block.box(2, 2, 8, 14, 14, 16); // 以南朝向为基准的主体
+
+    @Override
+    public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        // 简化：不根据朝向旋转，提供一个较小的选择框即可；若需严格，可后续按 FACING 旋转形状
+        return SELECTION;
+    }
+
+    @Override
+    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        // 碰撞体积与选择框一致，避免“看得见/撞不到”或“撞到隐形盒”的违和
+        return SELECTION;
+    }
+
+    @Override
+    public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) {
+        // 不阻挡环境光，避免在下方形成不合理的阴影
+        return 0;
     }
 }
