@@ -28,6 +28,11 @@ import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
+import appeng.items.parts.PartItem;
+import appeng.api.parts.IPart;
+import com.mebeamformer.part.BeamFormerPart;
+import appeng.api.parts.PartModels; // AE2 part model registry (client baked models)
+import appeng.items.parts.PartModelsHelper; // helper to collect models from @PartModels
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -53,12 +58,19 @@ public class ME_Beam_Former {
     public static final RegistryObject<Item> EXAMPLE_ITEM = ITEMS.register("example_item", () -> new Item(new Item.Properties().food(new FoodProperties.Builder()
             .alwaysEat().nutrition(1).saturationMod(2f).build())));
 
+    // AE2 Part Item: Beam Former (uses AE2 PartItem factory to create our part)
+    public static final RegistryObject<Item> BEAM_FORMER_PART_ITEM = ITEMS.register("beam_former_part", () ->
+            new PartItem<>(new Item.Properties(), BeamFormerPart.class, BeamFormerPart::new)
+    );
+
     // Creates a creative tab with the id "examplemod:example_tab" for the example item, that is placed after the combat tab
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
             .icon(() -> EXAMPLE_ITEM.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
             output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
+            // Show our part item for quick testing
+            output.accept(BEAM_FORMER_PART_ITEM.get());
             }).build());
 
     public ME_Beam_Former() {
@@ -82,6 +94,14 @@ public class ME_Beam_Former {
 
         // Register our mod's ForgeConfigSpec so that Forge can create and load the config file for us
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        // AE2: Register part models used by our cable-bus part(s) before model baking
+        // This prevents "Trying to use an unregistered part model" at render time.
+        try {
+            PartModels.registerModels(PartModelsHelper.createModels(BeamFormerPart.class));
+        } catch (Throwable t) {
+            LOGGER.error("Failed to register AE2 part models for BeamFormerPart", t);
+        }
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
