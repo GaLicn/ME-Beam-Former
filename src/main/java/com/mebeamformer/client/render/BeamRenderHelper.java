@@ -68,9 +68,9 @@ public final class BeamRenderHelper {
 
         // Build a cylindrical strip: more segments -> smoother cylinder
         final int SEGMENTS = 20;
-        // Neon look: [outer halo, inner halo, colored core, white hot core]
-        final float[] SHELL_SCALE = new float[] { 2.4f, 1.7f, 1.05f, 0.75f };
-        final float[] SHELL_ALPHA = new float[] { 0.07f, 0.16f, 0.95f, 1.00f };
+        // Neon look: [outer halo, inner halo, colored core, white hot core, tiny white spark]
+        final float[] SHELL_SCALE = new float[] { 2.6f, 1.9f, 1.20f, 0.95f, 0.60f };
+        final float[] SHELL_ALPHA = new float[] { 0.06f, 0.14f, 0.85f, 1.00f, 1.00f };
         // Axis vector
         float ax = (float) dx;
         float ay = (float) dy;
@@ -90,7 +90,7 @@ public final class BeamRenderHelper {
 
         // time-based subtle pulsation for neon sparkle (outer halos only)
         long gt = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0L;
-        float flicker = 0.85f + 0.15f * (float) Math.sin(gt * 0.35);
+        float flicker = 0.80f + 0.20f * (float) Math.sin(gt * 0.45);
 
         for (int s = 0; s < SHELL_SCALE.length; s++) {
             float radius = half * SHELL_SCALE[s];
@@ -130,10 +130,19 @@ public final class BeamRenderHelper {
                 // emissive for all shells to keep bright
                 VertexConsumer targetVc = vcEmissive;
 
-                // white hot core uses white color; others use cable color
-                float cr = (s == 3) ? 1f : r;
-                float cg = (s == 3) ? 1f : g;
-                float cb = (s == 3) ? 1f : b;
+                // white hot cores (s==3, s==4) use white; colored core (s==2) is slightly desaturated toward white for a "bright to white" gradient
+                float cr, cg, cb;
+                if (s >= 3) {
+                    cr = 1f; cg = 1f; cb = 1f;
+                } else if (s == 2) {
+                    // mix color with white by 30%
+                    float mix = 0.30f;
+                    cr = r * (1f - mix) + 1f * mix;
+                    cg = g * (1f - mix) + 1f * mix;
+                    cb = b * (1f - mix) + 1f * mix;
+                } else {
+                    cr = r; cg = g; cb = b;
+                }
 
                 quadBothSides(pose, normalMat, targetVc,
                         sx0, sy0, sz0,
