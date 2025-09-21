@@ -231,6 +231,14 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
                               net.minecraft.client.renderer.MultiBufferSource buffers,
                               int combinedLightIn, int combinedOverlayIn) {
         if (!shouldRenderBeam()) return;
+        // 客户端只读路径校验：若中途被方块阻挡，则不渲染（避免在下一次服务端断开前出现穿模）
+        var be = getBlockEntity();
+        Level levelRD = be != null ? be.getLevel() : null;
+        Direction dirRD = getSide();
+        int checkLen = this.beamLength > 0 ? this.beamLength : 1; // 邻接时至少检查 1 格
+        if (levelRD != null && !isPathClearForRender(levelRD, be.getBlockPos(), dirRD, checkLen)) {
+            return;
+        }
         // 颜色来自线缆颜色中等变体
         AEColor color = getHost().getColor();
         float scale = 255f;
@@ -242,6 +250,40 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         double visibleLen = beamLength > 0 ? beamLength : 0.5d;
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
                 poseStack, buffers, dir, visibleLen, r, g, b, combinedLightIn, combinedOverlayIn);
+    }
+
+    /**
+     * 客户端渲染前的路径清晰度检查（只读，不修改状态）。
+     * 与服务端 {@link #tickingRequest} 中的阻挡规则保持一致：
+     * - 遇到可遮挡且非空气的方块：若不是末端且不是对向的 BeamFormerPart，则视为阻挡。
+     * - 不允许穿过另一个同向的 BeamFormer。
+     */
+    private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {
+        BlockPos cur = start;
+        for (int i = 0; i < length; i++) {
+            cur = cur.relative(dir);
+            BlockState state = level.getBlockState(cur);
+            if (state.canOcclude() && !state.isAir()) {
+                BlockEntity otherBe = level.getBlockEntity(cur);
+                if (otherBe instanceof IPartHost ph) {
+                    var opposite = dir.getOpposite();
+                    var p = ph.getPart(opposite);
+                    // 仅当正好是末端并且对向为 BeamFormerPart 时放行
+                    if (i == length - 1 && p instanceof BeamFormerPart) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            BlockEntity otherBe = level.getBlockEntity(cur);
+            if (otherBe instanceof IPartHost ph) {
+                // 不允许穿过另一个同向的 BeamFormer
+                if (ph.getPart(dir) instanceof BeamFormerPart) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private void tryConnect(BeamFormerPart target, Set<BlockPos> path) {
