@@ -33,9 +33,17 @@ import java.util.Set;
 import static com.mebeamformer.ME_Beam_Former.MODID;
 
 public class BeamFormerPart extends AEBasePart implements IGridTickable {
-    // 先以最小可用模型占位，后续再根据状态切换
-    private static final ResourceLocation MODEL_PRISM = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_prism");
-    private static final IPartModel MODEL = new PartModel(MODEL_PRISM);
+    // 旧版模型结构：base + status(overlay) + prism
+    private static final ResourceLocation MODEL_BASE_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_base");
+    private static final ResourceLocation STATUS_OFF_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_off");
+    private static final ResourceLocation STATUS_ON_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_on");
+    private static final ResourceLocation STATUS_BEAMING_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_beaming");
+    private static final ResourceLocation PRISM_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_prism");
+
+    // 组合：与旧版保持一致
+    private static final IPartModel MODEL_BEAMING = new PartModel(STATUS_BEAMING_LOC, MODEL_BASE_LOC);
+    private static final IPartModel MODEL_ON = new PartModel(STATUS_ON_LOC, MODEL_BASE_LOC, PRISM_LOC);
+    private static final IPartModel MODEL_OFF = new PartModel(STATUS_OFF_LOC, MODEL_BASE_LOC, PRISM_LOC);
 
     private int beamLength = 0;
     private BeamFormerPart other = null;
@@ -50,7 +58,7 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @PartModels
     public static List<IPartModel> getModels() {
-        return List.of(MODEL);
+        return List.of(MODEL_OFF, MODEL_ON, MODEL_BEAMING);
     }
 
     @Override
@@ -85,8 +93,11 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public IPartModel getStaticModels() {
-        // 先固定返回占位模型
-        return MODEL;
+        // 与旧版逻辑一致：通电激活且已配对 -> BEAMING；通电激活未配对 -> ON；否则 OFF
+        if (this.isActive()) {
+            return (this.other != null) ? MODEL_BEAMING : MODEL_ON;
+        }
+        return MODEL_OFF;
     }
 
     @Override
