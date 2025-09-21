@@ -51,7 +51,9 @@ public final class BeamRenderHelper {
         poseStack.pushPose();
         poseStack.translate(0.5, 0.5, 0.5);
 
-        VertexConsumer vc = buffers.getBuffer(RenderType.entityTranslucent(BEAM_TEX));
+        // 使用发光渲染类型以获得更“霓虹”的明亮视觉
+        VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
+        VertexConsumer vcTranslucent = buffers.getBuffer(RenderType.entityTranslucent(BEAM_TEX));
 
         var last = poseStack.last();
         Matrix4f pose = last.pose();
@@ -61,14 +63,14 @@ public final class BeamRenderHelper {
         float v0 = 0f;
         float v1 = 1f;
 
-        float aOuter = 0.40f; // slight outer glow (less transparent)
-        float aInner = 1.00f;  // inner core (more opaque to avoid looking dim)
+        float aOuter = 0.40f; // legacy param (kept for reference)
+        float aInner = 1.00f;  // core opacity
 
         // Build a cylindrical strip: more segments -> smoother cylinder
-        final int SEGMENTS = 16;
-        // Multi-shell glow: outer shells first (larger radius, lower alpha), inner last (highest alpha)
-        final float[] SHELL_SCALE = new float[] { 1.8f, 1.4f, 1.0f };
-        final float[] SHELL_ALPHA = new float[] { 0.12f, 0.28f, 1.00f };
+        final int SEGMENTS = 20;
+        // Neon look: [outer halo, inner halo, colored core, white hot core]
+        final float[] SHELL_SCALE = new float[] { 2.4f, 1.7f, 1.05f, 0.75f };
+        final float[] SHELL_ALPHA = new float[] { 0.07f, 0.16f, 0.95f, 1.00f };
         // Axis vector
         float ax = (float) dx;
         float ay = (float) dy;
@@ -86,9 +88,15 @@ public final class BeamRenderHelper {
         // force fullbright for pure color visuals
         int fullLight = 0xF000F0;
 
+        // time-based subtle pulsation for neon sparkle (outer halos only)
+        long gt = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0L;
+        float flicker = 0.85f + 0.15f * (float) Math.sin(gt * 0.35);
+
         for (int s = 0; s < SHELL_SCALE.length; s++) {
             float radius = half * SHELL_SCALE[s];
             float alpha = SHELL_ALPHA[s];
+            // pulsate only for halos (s=0,1)
+            if (s <= 1) alpha *= flicker;
 
             for (int i = 0; i < SEGMENTS; i++) {
                 double a0 = (2 * Math.PI * i) / SEGMENTS;
@@ -119,12 +127,20 @@ public final class BeamRenderHelper {
                 float u0 = 0f;
                 float u1 = 1f;
 
-                quadBothSides(pose, normalMat, vc,
+                // emissive for all shells to keep bright
+                VertexConsumer targetVc = vcEmissive;
+
+                // white hot core uses white color; others use cable color
+                float cr = (s == 3) ? 1f : r;
+                float cg = (s == 3) ? 1f : g;
+                float cb = (s == 3) ? 1f : b;
+
+                quadBothSides(pose, normalMat, targetVc,
                         sx0, sy0, sz0,
                         sx1, sy1, sz1,
                         ex1, ey1, ez1,
                         ex0, ey0, ez0,
-                        r, g, b, alpha,
+                        cr, cg, cb, alpha,
                         u0, v0, u1, v1,
                         fullLight, overlay, nx, ny, nz);
             }
