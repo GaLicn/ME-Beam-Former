@@ -11,7 +11,8 @@ import org.joml.Matrix4f;
 
 public final class BeamRenderHelper {
     private static final float MIN_THICKNESS = 0.15f;
-    private static final ResourceLocation BEAM_TEX = ResourceLocation.withDefaultNamespace("textures/entity/beacon_beam.png");
+    // 使用纯白纹理，配合顶点颜色实现纯色光束
+    private static final ResourceLocation BEAM_TEX = ResourceLocation.withDefaultNamespace("textures/misc/white.png");
 
     private BeamRenderHelper() {}
 
@@ -45,41 +46,76 @@ public final class BeamRenderHelper {
         Matrix4f pose = last.pose();
         var normalMat = last.normal();
 
-        // UV animation like beacon
-        long gameTime = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.getGameTime() : 0L;
-        double scroll = (gameTime % 40L) / 40.0; // 0..1
-        float v0 = (float) (scroll);
-        float v1 = v0 + (float) length; // stretch with length
+        // 固定 UV，取消滚动动画，避免出现暗条纹；UV 覆盖整个面即可
+        float v0 = 0f;
+        float v1 = 1f;
 
         float aOuter = 0.40f; // slight outer glow (less transparent)
         float aInner = 0.90f;  // inner core (less transparent)
 
-        // We build 4 faces forming a prism around the main axis
+        // Build a cylindrical strip: more segments -> smoother cylinder
+        final int SEGMENTS = 16;
+        // Multi-shell glow: outer shells first (larger radius, lower alpha), inner last (highest alpha)
+        final float[] SHELL_SCALE = new float[] { 1.8f, 1.4f, 1.0f };
+        final float[] SHELL_ALPHA = new float[] { 0.15f, 0.35f, 0.90f };
+        // Axis vector
+        float ax = (float) dx;
+        float ay = (float) dy;
+        float az = (float) dz;
+
+        // Choose two perpendicular unit vectors (u, v) forming the cross-section basis
+        float ux, uy, uz, vx, vy, vz;
         switch (dir) {
-            case NORTH, SOUTH -> {
-                float x1 = -half, x2 = +half, y1 = -half, y2 = +half;
-                float z0 = 0f, z1f = (float) dz;
-                // two orthogonal pairs to make square
-                quadBothSides(pose, normalMat, vc, x1, y1, z0, x2, y1, z0, x2, y2, z0, x1, y2, z0, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, 0f, 0f, -1f);
-                quadBothSides(pose, normalMat, vc, x2, y1, z1f, x1, y1, z1f, x1, y2, z1f, x2, y2, z1f, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, 0f, 0f, 1f);
-                quadBothSides(pose, normalMat, vc, x1, y1, z1f, x1, y1, z0, x1, y2, z0, x1, y2, z1f, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, -1f, 0f, 0f);
-                quadBothSides(pose, normalMat, vc, x2, y1, z0, x2, y1, z1f, x2, y2, z1f, x2, y2, z0, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, 1f, 0f, 0f);
-            }
-            case WEST, EAST -> {
-                float z1 = -half, z2 = +half, y1 = -half, y2 = +half;
-                float x0 = 0f, x1f = (float) dx;
-                quadBothSides(pose, normalMat, vc, x0, y1, z1, x0, y1, z2, x0, y2, z2, x0, y2, z1, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, -1f, 0f, 0f);
-                quadBothSides(pose, normalMat, vc, x1f, y1, z2, x1f, y1, z1, x1f, y2, z1, x1f, y2, z2, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, 1f, 0f, 0f);
-                quadBothSides(pose, normalMat, vc, x1f, y1, z1, x0, y1, z1, x0, y2, z1, x1f, y2, z1, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, 0f, 0f, -1f);
-                quadBothSides(pose, normalMat, vc, x0, y1, z2, x1f, y1, z2, x1f, y2, z2, x0, y2, z2, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, 0f, 0f, 1f);
-            }
-            case DOWN, UP -> {
-                float x1 = -half, x2 = +half, z1 = -half, z2 = +half;
-                float y0 = 0f, y1f = (float) dy;
-                quadBothSides(pose, normalMat, vc, x1, y0, z1, x2, y0, z1, x2, y0, z2, x1, y0, z2, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, 0f, -1f, 0f);
-                quadBothSides(pose, normalMat, vc, x2, y1f, z1, x1, y1f, z1, x1, y1f, z2, x2, y1f, z2, r, g, b, aInner, 0f, v0, 1f, v1, light, overlay, 0f, 1f, 0f);
-                quadBothSides(pose, normalMat, vc, x1, y1f, z1, x1, y0, z1, x1, y0, z2, x1, y1f, z2, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, -1f, 0f, 0f);
-                quadBothSides(pose, normalMat, vc, x2, y0, z1, x2, y1f, z1, x2, y1f, z2, x2, y0, z2, r, g, b, aOuter, 0f, v0, 1f, v1, light, overlay, 1f, 0f, 0f);
+            case UP, DOWN -> { ux = 1f; uy = 0f; uz = 0f; vx = 0f; vy = 0f; vz = 1f; }
+            case NORTH, SOUTH -> { ux = 1f; uy = 0f; uz = 0f; vx = 0f; vy = 1f; vz = 0f; }
+            case WEST, EAST -> { ux = 0f; uy = 1f; uz = 0f; vx = 0f; vy = 0f; vz = 1f; }
+            default -> { ux = 1f; uy = 0f; uz = 0f; vx = 0f; vy = 1f; vz = 0f; }
+        }
+
+        // force fullbright for pure color visuals
+        int fullLight = 0xF000F0;
+
+        for (int s = 0; s < SHELL_SCALE.length; s++) {
+            float radius = half * SHELL_SCALE[s];
+            float alpha = SHELL_ALPHA[s];
+
+            for (int i = 0; i < SEGMENTS; i++) {
+                double a0 = (2 * Math.PI * i) / SEGMENTS;
+                double a1 = (2 * Math.PI * (i + 1)) / SEGMENTS;
+                float c0 = (float) Math.cos(a0), s0 = (float) Math.sin(a0);
+                float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+
+                // ring positions at start (center 0,0,0) and end (shifted by axis)
+                float sx0 = ux * c0 * radius + vx * s0 * radius;
+                float sy0 = uy * c0 * radius + vy * s0 * radius;
+                float sz0 = uz * c0 * radius + vz * s0 * radius;
+                float sx1 = ux * c1 * radius + vx * s1 * radius;
+                float sy1 = uy * c1 * radius + vy * s1 * radius;
+                float sz1 = uz * c1 * radius + vz * s1 * radius;
+
+                // end points
+                float ex0 = sx0 + ax;
+                float ey0 = sy0 + ay;
+                float ez0 = sz0 + az;
+                float ex1 = sx1 + ax;
+                float ey1 = sy1 + ay;
+                float ez1 = sz1 + az;
+
+                // pure color: avoid lighting variation by using zero normals
+                float nx = 0f, ny = 0f, nz = 0f;
+
+                // 固定 U，整个条带统一 UV，配合纯白纹理与颜色实现纯色
+                float u0 = 0f;
+                float u1 = 1f;
+
+                quadBothSides(pose, normalMat, vc,
+                        sx0, sy0, sz0,
+                        sx1, sy1, sz1,
+                        ex1, ey1, ez1,
+                        ex0, ey0, ez0,
+                        r, g, b, alpha,
+                        u0, v0, u1, v1,
+                        fullLight, overlay, nx, ny, nz);
             }
         }
 
