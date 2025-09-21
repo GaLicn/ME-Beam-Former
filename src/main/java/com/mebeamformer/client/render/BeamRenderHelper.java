@@ -13,6 +13,24 @@ public final class BeamRenderHelper {
     private static final float MIN_THICKNESS = 0.15f;
     // 使用纯白纹理，配合顶点颜色实现纯色光束
     private static final ResourceLocation BEAM_TEX = ResourceLocation.withDefaultNamespace("textures/misc/white.png");
+    // 颜色调优：提高亮度与对比度（可按需微调）
+    private static final float COLOR_BRIGHTNESS = 1.30f; // >1 提亮，<1 变暗
+    private static final float COLOR_CONTRAST   = 1.05f; // 适度对比以避免去饱和发灰
+    // 饱和度增强，防止 mediumVariant 偏灰
+    private static final float COLOR_SAT_BOOST  = 1.40f; // >1 提升饱和度
+    private static final float COLOR_SAT_MIN    = 0.60f; // 最低饱和度下限
+
+    // 将颜色通道限定在 0..1，并施加对比度/亮度曲线
+    private static float adjustChannel(float c) {
+        // 对比度：以 0.5 为中心扩展/压缩
+        c = (c - 0.5f) * COLOR_CONTRAST + 0.5f;
+        // 亮度：整体增益
+        c = c * COLOR_BRIGHTNESS;
+        // 裁剪
+        if (c < 0f) c = 0f;
+        if (c > 1f) c = 1f;
+        return c;
+    }
 
     private BeamRenderHelper() {}
 
@@ -41,11 +59,17 @@ public final class BeamRenderHelper {
         {
             float[] hsv = rgbToHsv(r, g, b);
             float h = hsv[0], s = hsv[1];
-            float v = 1.0f; // 仅提升明度，不改变饱和度
+            // 提升饱和度，并设置下限，避免偏灰
+            s = Math.min(1.0f, Math.max(s * COLOR_SAT_BOOST, COLOR_SAT_MIN));
+            float v = 1.0f; // 拉满明度
             float[] rgb = hsvToRgb(h, s, v);
             r = rgb[0];
             g = rgb[1];
             b = rgb[2];
+            // 进一步提升亮度与对比度
+            r = adjustChannel(r);
+            g = adjustChannel(g);
+            b = adjustChannel(b);
         }
 
         poseStack.pushPose();
@@ -70,7 +94,8 @@ public final class BeamRenderHelper {
         final int SEGMENTS = 20;
         // Neon look: [outer halo, inner halo, colored core, white hot core, tiny white spark]
         final float[] SHELL_SCALE = new float[] { 2.6f, 1.9f, 1.20f, 0.95f, 0.60f };
-        final float[] SHELL_ALPHA = new float[] { 0.06f, 0.14f, 0.85f, 1.00f, 1.00f };
+        // 外圈稍淡，核心更实，整体对比更强
+        final float[] SHELL_ALPHA = new float[] { 0.04f, 0.10f, 0.95f, 1.00f, 1.00f };
         // Axis vector
         float ax = (float) dx;
         float ay = (float) dy;
@@ -136,7 +161,7 @@ public final class BeamRenderHelper {
                     cr = 1f; cg = 1f; cb = 1f;
                 } else if (s == 2) {
                     // mix color with white by 30%
-                    float mix = 0.30f;
+                    float mix = 0.25f; // 降低向白混合，保持颜色饱和
                     cr = r * (1f - mix) + 1f * mix;
                     cg = g * (1f - mix) + 1f * mix;
                     cb = b * (1f - mix) + 1f * mix;
