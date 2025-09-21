@@ -10,6 +10,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import static com.mebeamformer.block.BeamFormerBlock.STATUS;
 
 public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity> {
     public BeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
@@ -21,16 +22,19 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         if (!(state.getBlock() instanceof BeamFormerBlock)) return;
         Direction dir = state.getValue(BeamFormerBlock.FACING);
         int len = Math.max(0, te.getBeamLength());
-        if (len <= 0) return;
+        boolean beaming = state.getValue(STATUS) == BeamFormerBlock.Status.BEAMING;
+        double visibleLen = len > 0 ? len : (beaming ? 0.5d : 0.0d);
+        if (visibleLen <= 0) return;
 
         Level level = te.getLevel();
         BlockPos pos = te.getBlockPos();
         if (level == null) return;
-        if (!isPathClearForRender(level, pos, dir, len)) return;
+        int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
+        if (!isPathClearForRender(level, pos, dir, checkLen)) return;
 
         float r = 1f, g = 1f, b = 1f; // 先用白色光束
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
-                poseStack, buffers, dir, len, r, g, b, packedLight, packedOverlay);
+                poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay);
     }
 
     private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {

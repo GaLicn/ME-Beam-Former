@@ -8,6 +8,7 @@ import appeng.blockentity.grid.AENetworkBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.block.state.BlockState;
 
 import com.mebeamformer.block.BeamFormerBlock;
@@ -70,11 +71,13 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                 level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.BEAMING), 3);
             }
         } else {
+            int old = be.beamLength;
             be.disconnect();
             if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
                 level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
             }
             be.beamLength = 0;
+            if (old != 0) be.markForUpdate();
         }
     }
 
@@ -94,10 +97,14 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         if (this.connection != null) {
             var other = this.connection.getOtherSide(aNode);
             if (other == bNode) {
+                int oldA = this.beamLength;
+                int oldB = target.beamLength;
                 this.beamLength = len;
                 target.beamLength = len;
                 // 同步对端的缓存
                 if (target.connection == null) target.connection = this.connection;
+                if (this.level != null && oldA != this.beamLength) this.markForUpdate();
+                if (target.level != null && oldB != target.beamLength) target.markForUpdate();
                 return;
             } else {
                 this.disconnect();
@@ -113,7 +120,9 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
             // 仅由坐标较小的一端创建连接，避免双端同时创建导致 Already exists 异常
             if (this.getBlockPos().compareTo(target.getBlockPos()) > 0) {
                 // 让另一端创建，本端只刷新长度缓存
+                int oldA = this.beamLength;
                 this.beamLength = len;
+                if (this.level != null && oldA != this.beamLength) this.markForUpdate();
                 return;
             }
             existing = GridHelper.createConnection(aNode, bNode);
@@ -122,8 +131,12 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         // 缓存连接并刷新长度
         this.connection = existing;
         target.connection = existing;
+        int oldA = this.beamLength;
+        int oldB = target.beamLength;
         this.beamLength = len;
         target.beamLength = len;
+        if (this.level != null && oldA != this.beamLength) this.markForUpdate();
+        if (target.level != null && oldB != target.beamLength) target.markForUpdate();
     }
 
     public void disconnect() {
@@ -131,5 +144,18 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
             this.connection.destroy();
             this.connection = null;
         }
+    }
+
+    // ---- Client Sync: send beamLength to clients for BER rendering ----
+    @Override
+    protected void writeToStream(FriendlyByteBuf data) {
+        data.writeVarInt(this.beamLength);
+    }
+
+    @Override
+    protected boolean readFromStream(FriendlyByteBuf data) {
+        int old = this.beamLength;
+        this.beamLength = data.readVarInt();
+        return old != this.beamLength;
     }
 }
