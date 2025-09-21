@@ -61,3 +61,13 @@ description='''${mod_description}'''
    versionRange="${minecraft_version_range}"
    ordering="NONE"
    side="BOTH"
+
+# Require Applied Energistics 2 (AE2)
+[[dependencies."${mod_id}"]]
+   modId="ae2"
+   mandatory=true
+   # Accept any AE2 version; adjust to a stricter range if you target a specific major, e.g. "[15,)"
+   versionRange="[0,)"
+   # Our mod should load AFTER AE2 so all its registries/services are available
+   ordering="AFTER"
+   side="BOTH"

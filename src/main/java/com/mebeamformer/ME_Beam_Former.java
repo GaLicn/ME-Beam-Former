@@ -4,7 +4,6 @@ import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -14,6 +13,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.server.ServerStartingEvent;
@@ -59,14 +59,7 @@ public class ME_Beam_Former {
     // Create a Deferred Register to hold CreativeModeTabs which will all be registered under the "examplemod" namespace
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
-    // Creates a new Block with the id "me_beam_former:example_block", combining the namespace and path
-    public static final RegistryObject<Block> EXAMPLE_BLOCK = BLOCKS.register("example_block", () -> new Block(BlockBehaviour.Properties.of().mapColor(MapColor.STONE)));
-    // Creates a new BlockItem with the id "me_beam_former:example_block", combining the namespace and path
-    public static final RegistryObject<Item> EXAMPLE_BLOCK_ITEM = ITEMS.register("example_block", () -> new BlockItem(EXAMPLE_BLOCK.get(), new Item.Properties()));
-
-    // Creates a new food item with the id "examplemod:example_id", nutrition 1 and saturation 2
-    public static final RegistryObject<Item> EXAMPLE_ITEM = ITEMS.register("example_item", () -> new Item(new Item.Properties().food(new FoodProperties.Builder()
-            .alwaysEat().nutrition(1).saturationMod(2f).build())));
+    // 删除示例方块与示例物品（原 EXAMPLE_BLOCK/EXAMPLE_BLOCK_ITEM/EXAMPLE_ITEM）
 
     // AE2 Part Item: Beam Former (uses AE2 PartItem factory to create our part)
     public static final RegistryObject<Item> BEAM_FORMER_PART_ITEM = ITEMS.register("beam_former_part", () ->
@@ -86,14 +79,15 @@ public class ME_Beam_Former {
     public static final RegistryObject<BlockEntityType<BeamFormerBlockEntity>> BEAM_FORMER_BE = BLOCK_ENTITIES.register("beam_former_block",
             () -> BlockEntityType.Builder.of(BeamFormerBlockEntity::new, BEAM_FORMER_BLOCK.get()).build(null));
 
-    // Creates a creative tab with the id "examplemod:example_tab" for the example item, that is placed after the combat tab
+    // 创造物品栏页签：图标改为“光束器方块”的物品图标，同时移除示例物品的展示
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
-            .icon(() -> EXAMPLE_ITEM.get().getDefaultInstance())
+            .title(Component.translatable("itemGroup.me_beam_former.example_tab"))
+            .icon(() -> BEAM_FORMER_BLOCK_ITEM.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
-            output.accept(EXAMPLE_ITEM.get()); // Add the example item to the tab. For your own tabs, this method is preferred over the event
-            // Show our part item for quick testing
-            output.accept(BEAM_FORMER_PART_ITEM.get());
+                // 展示：我们的 AE2 Part 和方块
+                output.accept(BEAM_FORMER_PART_ITEM.get());
+                output.accept(BEAM_FORMER_BLOCK_ITEM.get());
             }).build());
 
     public ME_Beam_Former() {
@@ -160,11 +154,7 @@ public class ME_Beam_Former {
     // Add the example block item to the building blocks tab
     private void addCreative(BuildCreativeModeTabContentsEvent event)
     {
-        if (event.getTabKey() == CreativeModeTabs.BUILDING_BLOCKS)
-            event.accept(EXAMPLE_BLOCK_ITEM);
-        if (event.getTabKey() == CreativeModeTabs.REDSTONE_BLOCKS) {
-            event.accept(BEAM_FORMER_BLOCK_ITEM);
-        }
+        // 不再向任何原版标签页注入物品；物品仅在自定义页签中展示
     }
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
