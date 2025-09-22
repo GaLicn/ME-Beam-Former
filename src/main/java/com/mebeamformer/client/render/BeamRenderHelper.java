@@ -12,7 +12,7 @@ import org.joml.Matrix4f;
 public final class BeamRenderHelper {
     private static final float MIN_THICKNESS = 0.15f;
     // 使用纯白纹理，配合顶点颜色实现纯色光束
-    private static final ResourceLocation BEAM_TEX = ResourceLocation.withDefaultNamespace("textures/misc/white.png");
+    private static final ResourceLocation BEAM_TEX = new ResourceLocation("minecraft", "textures/misc/white.png");
     // 颜色调优：提高亮度与对比度（可按需微调）
     private static final float COLOR_BRIGHTNESS = 1.30f; // >1 提亮，<1 变暗
     private static final float COLOR_CONTRAST   = 1.05f; // 适度对比以避免去饱和发灰
@@ -69,9 +69,7 @@ public final class BeamRenderHelper {
             case UP    -> dy =  length;
         }
 
-        // 预留位置（此前在这里绘制外圈光环，现合并到统一渲染循环中以简化作用域）
-
-        // 方案A：HSV 提亮 — 保留原有色相与饱和度，只将明度 V 拉满为 1.0，确保颜色与线缆一致但更亮
+        // HSV 提亮 — 保留原有色相与饱和度，只将明度 V 拉满为 1.0，确保颜色与线缆一致但更亮
         {
             float[] hsv = rgbToHsv(r, g, b);
             float h = hsv[0], s = hsv[1];
@@ -100,7 +98,6 @@ public final class BeamRenderHelper {
             poseStack.pushPose();
             poseStack.translate(0.5, 0.5, 0.5);
             // 新模型不是完整方块：将光束起点相对“朝向”向后偏移 0.75 格
-            // 从方块中心到外表面为 +0.5，向后 0.75 即中心沿 -dir 偏移 0.25（0.5 - 0.75 = -0.25）
             final double BACK_OFFSET = 0.75; // blocks
             final double START = 0.5 - BACK_OFFSET; // -0.25
             poseStack.translate(dir.getStepX() * START, dir.getStepY() * START, dir.getStepZ() * START);

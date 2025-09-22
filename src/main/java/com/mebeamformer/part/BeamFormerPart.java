@@ -33,14 +33,13 @@ import java.util.Set;
 import static com.mebeamformer.ME_Beam_Former.MODID;
 
 public class BeamFormerPart extends AEBasePart implements IGridTickable {
-    // 旧版模型结构：base + status(overlay) + prism
-    private static final ResourceLocation MODEL_BASE_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_base");
-    private static final ResourceLocation STATUS_OFF_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_off");
-    private static final ResourceLocation STATUS_ON_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_on");
-    private static final ResourceLocation STATUS_BEAMING_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_beaming");
-    private static final ResourceLocation PRISM_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_prism");
+    // 模型结构：base + status(overlay) + prism
+    private static final ResourceLocation MODEL_BASE_LOC = new ResourceLocation(MODID, "part/beam_former_base");
+    private static final ResourceLocation STATUS_OFF_LOC = new ResourceLocation(MODID, "part/beam_former_status_off");
+    private static final ResourceLocation STATUS_ON_LOC = new ResourceLocation(MODID, "part/beam_former_status_on");
+    private static final ResourceLocation STATUS_BEAMING_LOC = new ResourceLocation(MODID, "part/beam_former_status_beaming");
+    private static final ResourceLocation PRISM_LOC = new ResourceLocation(MODID, "part/beam_former_prism");
 
-    // 组合：与旧版保持一致
     private static final IPartModel MODEL_BEAMING = new PartModel(STATUS_BEAMING_LOC, MODEL_BASE_LOC);
     private static final IPartModel MODEL_ON = new PartModel(STATUS_ON_LOC, MODEL_BASE_LOC, PRISM_LOC);
     private static final IPartModel MODEL_OFF = new PartModel(STATUS_OFF_LOC, MODEL_BASE_LOC, PRISM_LOC);
@@ -52,7 +51,6 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     public BeamFormerPart(IPartItem<?> partItem) {
         super(partItem);
-        // 暂不设置特殊 GridFlags，等逻辑补齐后再调优
         getMainNode().addService(IGridTickable.class, this);
     }
 
@@ -63,7 +61,6 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public void getBoxes(IPartCollisionHelper bch) {
-        // 采用旧版 NAE2 的碰撞盒定义，使放置预览与实际模型一致
         bch.addBox(10, 10, 12, 6, 6, 11);
         bch.addBox(10, 10, 13, 6, 6, 12);
         bch.addBox(10, 6, 14, 6, 5, 13);
@@ -106,7 +103,7 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public IPartModel getStaticModels() {
-        // 与旧版逻辑一致：通电激活且已配对 -> BEAMING；通电激活未配对 -> ON；否则 OFF
+        // 通电激活且已配对 -> BEAMING；通电激活未配对 -> ON；否则 OFF
         if (this.isActive()) {
             return (this.other != null) ? MODEL_BEAMING : MODEL_ON;
         }
@@ -115,7 +112,6 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public TickingRequest getTickingRequest(IGridNode node) {
-        // 简化：选择接近旧版用途的节奏，后续可根据需要单独新增 TickRates 常量
         return new TickingRequest(appeng.core.settings.TickRates.LightTunnel, false, true);
     }
 
