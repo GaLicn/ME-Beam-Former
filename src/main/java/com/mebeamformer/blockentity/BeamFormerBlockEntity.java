@@ -54,6 +54,10 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
     public int getBeamLength() { return beamLength; }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, BeamFormerBlockEntity be) {
+        // 若方块实体已被标记移除，避免任何状态写回，防止被挖掘时“复活”
+        if (be.isRemoved()) {
+            return;
+        }
         Direction facing = state.getValue(BeamFormerBlock.FACING);
         // 初始未接入网络或临时断电时，也应继续执行扫描/连接逻辑，由 AE2 负责合并电网并恢复供电。
         // 强制仅暴露背面为可连接面
@@ -68,7 +72,7 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         if (aNode == null) {
             int old = be.beamLength;
             be.beamLength = 0;
-            if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+            if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
                 level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
             }
             if (old != 0) be.markForUpdate();
@@ -124,13 +128,13 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                 boolean aOk = aManaged != null && aManaged.isOnline() && aManaged.isPowered();
                 boolean bOk = tManaged.isOnline() && tManaged.isPowered();
                 if (aOk && bOk) {
-                    if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.BEAMING) {
+                    if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.BEAMING) {
                         level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.BEAMING), 3);
                     }
                 } else {
                     int oldA = be.beamLength;
                     be.beamLength = 0;
-                    if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+                    if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
                         level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
                     }
                     if (oldA != 0) be.markForUpdate();
@@ -138,7 +142,7 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                     BlockState tState = target.getBlockState();
                     int oldB = target.beamLength;
                     target.beamLength = 0;
-                    if (tState.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+                    if (!target.isRemoved() && tState.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
                         level.setBlock(target.getBlockPos(), tState.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
                     }
                     if (oldB != 0) target.markForUpdate();
@@ -147,7 +151,7 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         } else {
             int old = be.beamLength;
             be.disconnect();
-            if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+            if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
                 level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
             }
             be.beamLength = 0;
@@ -235,7 +239,7 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                             if (otherBe.level != null && old != 0) otherBe.markForUpdate();
                             // 对端状态同步回退为 ON（若仍为 BEAMING）
                             var st = otherBe.getBlockState();
-                            if (st.getValue(BeamFormerBlock.STATUS) == BeamFormerBlock.Status.BEAMING) {
+                            if (!otherBe.isRemoved() && st.getValue(BeamFormerBlock.STATUS) == BeamFormerBlock.Status.BEAMING) {
                                 otherBe.level.setBlock(otherBe.getBlockPos(), st.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
                             }
                         }
