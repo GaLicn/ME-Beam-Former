@@ -62,6 +62,19 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
             be.getMainNode().setExposedOnSides(EnumSet.of(back));
             be.lastExposedBack = back;
         }
+        // 若主节点尚未创建（客户端/服务端初始化早期），清空光束并等待下一 tick 再尝试
+        var mainNode = be.getMainNode();
+        var aNode = (mainNode == null) ? null : mainNode.getNode();
+        if (aNode == null) {
+            int old = be.beamLength;
+            be.beamLength = 0;
+            if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+                level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
+            }
+            if (old != 0) be.markForUpdate();
+            // 不强制断开 AE 连接；节点未创建时并不存在可销毁连接
+            return;
+        }
         BlockPos cur = pos;
         int max = 32;
         int len = 0;
@@ -92,6 +105,15 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                 if (otherFacing == facing) { target = null; break; }
                 // 反向：即便对方不是可遮挡方块，也直接确定为目标并终止
                 if (otherFacing == facing.getOpposite()) { target = other; break; }
+            }
+        }
+
+        // 对端必须至少已创建节点，否则暂不形成光束
+        if (target != null) {
+            var tManaged = target.getMainNode();
+            var tNode = (tManaged == null) ? null : tManaged.getNode();
+            if (tNode == null) {
+                target = null;
             }
         }
 
@@ -216,5 +238,19 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         int old = this.beamLength;
         this.beamLength = data.readVarInt();
         return old != this.beamLength;
+    }
+
+    @Override
+    public void onChunkUnloaded() {
+        // 区块卸载时断开连接并确保客户端不会继续渲染
+        this.disconnect();
+        super.onChunkUnloaded();
+    }
+
+    @Override
+    public void setRemoved() {
+        // 保证在移除时清理连接，避免状态在客户端残留
+        super.setRemoved();
+        this.disconnect();
     }
 }
