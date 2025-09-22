@@ -1,14 +1,15 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    " A ",
-    " B ",
-    " C "
+    "DAD",
+    "DBD",
+    "DCD"
   ],
   "key": {
     "A": { "item": "ae2:fluix_pearl" },
     "B": { "item": "me_beam_former:beam_former_part" },
-    "C": { "item": "ae2:fluix_smart_dense_cable" }
+    "C": { "item": "ae2:energy_acceptor" },
+    "D": { "item": "ae2:fluix_smart_dense_cable" }
   },
   "result": {
     "item": "me_beam_former:beam_former_block",

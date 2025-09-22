@@ -3,6 +3,7 @@ package com.mebeamformer.blockentity;
 import appeng.api.networking.GridHelper;
 import appeng.api.networking.IGridConnection;
 import appeng.api.networking.IManagedGridNode;
+import appeng.api.networking.GridFlags;
 import appeng.api.util.AECableType;
 import appeng.blockentity.grid.AENetworkBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -27,6 +28,8 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
 
     public BeamFormerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.BEAM_FORMER_BE.get(), pos, state);
+        // 关键：宣告本节点具备“致密容量”
+        this.getMainNode().setFlags(GridFlags.DENSE_CAPACITY);
     }
 
     @Override
@@ -34,22 +37,25 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         // 仅允许“背面”连接线缆：背面指方块朝向(FACING)的反方向
         Direction facing = this.getBlockState().getValue(BeamFormerBlock.FACING);
         if (dir == facing.getOpposite()) {
-            return AECableType.DENSE_SMART; // 32 频道（致密智能）
+            // 返回 SMART 以兼容普通智能/致密智能线缆，容量由 GridFlags.DENSE_CAPACITY 提供
+            return AECableType.SMART;
         }
         return AECableType.NONE; // 其他朝向不允许连接
     }
 
-    // 限制可暴露的 ME 连接面：仅背面（使用 AE 的 BlockOrientation 将“背面”映射为绝对朝向）
+    // 限制可暴露的 ME 连接面：仅“方块FACING的反面”。
+    // 直接依据本方块状态的 FACING 计算，而非 AE 的 BlockOrientation，避免二者坐标系不一致导致朝向错乱。
     @Override
     public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
-        // AE2 定义 RelativeSide.FRONT/ BACK 等相对面，orientation.getSide 将其转换为世界绝对 Direction
-        return EnumSet.of(orientation.getSide(RelativeSide.BACK));
+        Direction facing = this.getBlockState().getValue(BeamFormerBlock.FACING);
+        return EnumSet.of(facing.getOpposite());
     }
 
     public int getBeamLength() { return beamLength; }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, BeamFormerBlockEntity be) {
         Direction facing = state.getValue(BeamFormerBlock.FACING);
+        // 初始未接入网络或临时断电时，也应继续执行扫描/连接逻辑，由 AE2 负责合并电网并恢复供电。
         // 强制仅暴露背面为可连接面
         Direction back = facing.getOpposite();
         if (be.lastExposedBack != back) {
@@ -142,15 +148,23 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
                 .findFirst()
                 .orElse(null);
         if (existing == null) {
-            // 仅由坐标较小的一端创建连接，避免双端同时创建导致 Already exists 异常
-            if (this.getBlockPos().compareTo(target.getBlockPos()) > 0) {
-                // 让另一端创建，本端只刷新长度缓存
-                int oldA = this.beamLength;
-                this.beamLength = len;
-                if (this.level != null && oldA != this.beamLength) this.markForUpdate();
-                return;
+            // 乐观创建，若另一端同时创建会抛 Already exists，忽略即可
+            try {
+                existing = GridHelper.createConnection(aNode, bNode);
+            } catch (IllegalStateException ignored) {
+                // 另一端可能已创建；重新查询一次获取现有连接
+                existing = aNode.getConnections().stream()
+                        .filter(c -> c.getOtherSide(aNode) == bNode)
+                        .findFirst()
+                        .orElse(null);
+                if (existing == null) {
+                    // 尚未建立，先缓存长度，等待下一 tick 再尝试
+                    int oldA = this.beamLength;
+                    this.beamLength = len;
+                    if (this.level != null && oldA != this.beamLength) this.markForUpdate();
+                    return;
+                }
             }
-            existing = GridHelper.createConnection(aNode, bNode);
         }
 
         // 缓存连接并刷新长度
@@ -166,6 +180,26 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
 
     public void disconnect() {
         if (this.connection != null) {
+            try {
+                var myNode = this.getMainNode().getNode();
+                if (myNode != null) {
+                    var otherNode = this.connection.getOtherSide(myNode);
+                    if (otherNode != null) {
+                        var owner = otherNode.getOwner();
+                        if (owner instanceof BeamFormerBlockEntity otherBe) {
+                            int old = otherBe.beamLength;
+                            otherBe.beamLength = 0;
+                            if (otherBe.level != null && old != 0) otherBe.markForUpdate();
+                            // 对端状态同步回退为 ON（若仍为 BEAMING）
+                            var st = otherBe.getBlockState();
+                            if (st.getValue(BeamFormerBlock.STATUS) == BeamFormerBlock.Status.BEAMING) {
+                                otherBe.level.setBlock(otherBe.getBlockPos(), st.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
             this.connection.destroy();
             this.connection = null;
         }
