@@ -1,7 +1,6 @@
 package com.mebeamformer;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderers;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BlockItem;
@@ -9,14 +8,12 @@ import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
-import net.minecraftforge.event.server.ServerStartingEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -30,10 +27,9 @@ import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.registries.RegistryObject;
 import org.slf4j.Logger;
 import appeng.items.parts.PartItem;
-import appeng.api.parts.IPart;
 import com.mebeamformer.part.BeamFormerPart;
-import appeng.api.parts.PartModels; // AE2 part model registry (client baked models)
-import appeng.items.parts.PartModelsHelper; // helper to collect models from @PartModels
+import appeng.api.parts.PartModels; // AE2 零件模型注册（客户端烘焙模型）
+import appeng.items.parts.PartModelsHelper; // 从 @PartModels 收集模型
 
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import com.mebeamformer.block.BeamFormerBlock;
@@ -59,8 +55,6 @@ public class ME_Beam_Former {
     // Create a Deferred Register to hold CreativeModeTabs which will all be registered under the "examplemod" namespace
     public static final DeferredRegister<CreativeModeTab> CREATIVE_MODE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, MODID);
 
-    // 删除示例方块与示例物品（原 EXAMPLE_BLOCK/EXAMPLE_BLOCK_ITEM/EXAMPLE_ITEM）
-
     // AE2 Part Item: Beam Former (uses AE2 PartItem factory to create our part)
     public static final RegistryObject<Item> BEAM_FORMER_PART_ITEM = ITEMS.register("beam_former_part", () ->
             new PartItem<>(new Item.Properties(), BeamFormerPart.class, BeamFormerPart::new)
@@ -71,7 +65,8 @@ public class ME_Beam_Former {
             () -> new BeamFormerBlock(BlockBehaviour.Properties
                     .of()
                     .mapColor(MapColor.METAL)
-                    .strength(3.0f, 6.0f)
+                    .strength(0.3f) // 与玻璃一致的硬度，空手可挖
+                    .sound(SoundType.GLASS) // 破坏/交互音效与玻璃一致
                     .noOcclusion() // 非完整方块：禁用几何遮挡，避免错误的邻面裁剪/透视
             ));
     public static final RegistryObject<Item> BEAM_FORMER_BLOCK_ITEM = ITEMS.register("beam_former_block",
@@ -79,13 +74,13 @@ public class ME_Beam_Former {
     public static final RegistryObject<BlockEntityType<BeamFormerBlockEntity>> BEAM_FORMER_BE = BLOCK_ENTITIES.register("beam_former_block",
             () -> BlockEntityType.Builder.of(BeamFormerBlockEntity::new, BEAM_FORMER_BLOCK.get()).build(null));
 
-    // 创造物品栏页签：图标改为“光束器方块”的物品图标，同时移除示例物品的展示
+    // 创造物品栏页签：使用“光束器方块”作为图标，展示本模组核心内容
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
             .title(Component.translatable("itemGroup.me_beam_former.example_tab"))
             .icon(() -> BEAM_FORMER_BLOCK_ITEM.get().getDefaultInstance())
             .displayItems((parameters, output) -> {
-                // 展示：我们的 AE2 Part 和方块
+                // 展示：AE2 部件与方块
                 output.accept(BEAM_FORMER_PART_ITEM.get());
                 output.accept(BEAM_FORMER_BLOCK_ITEM.get());
             }).build());
@@ -93,28 +88,22 @@ public class ME_Beam_Former {
     public ME_Beam_Former() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
-        // Register the commonSetup method for modloading
+        // 生命周期：通用阶段回调
         modEventBus.addListener(this::commonSetup);
 
-        // Register the Deferred Register to the mod event bus so blocks get registered
+        // 注册各类注册表
         BLOCKS.register(modEventBus);
-        // Register the Deferred Register to the mod event bus so items get registered
         ITEMS.register(modEventBus);
         BLOCK_ENTITIES.register(modEventBus);
-        // Register the Deferred Register to the mod event bus so tabs get registered
         CREATIVE_MODE_TABS.register(modEventBus);
 
-        // Register ourselves for server and other game events we are interested in
+        // 订阅通用事件总线
         MinecraftForge.EVENT_BUS.register(this);
 
-        // Register the item to a creative tab
-        modEventBus.addListener(this::addCreative);
-
-        // Register our mod's ForgeConfigSpec so that Forge can create and load the config file for us
+        // 注册配置规范
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
-        // AE2: Register part models used by our cable-bus part(s) before model baking
-        // This prevents "Trying to use an unregistered part model" at render time.
+        // AE2：在模型烘焙前注册零件模型，避免渲染时出现“未注册零件模型”
         try {
             PartModels.registerModels(PartModelsHelper.createModels(BeamFormerPart.class));
         } catch (Throwable t) {
@@ -123,18 +112,7 @@ public class ME_Beam_Former {
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
-        // Some common setup code
-        LOGGER.info("HELLO FROM COMMON SETUP");
-        LOGGER.info("DIRT BLOCK >> {}", ForgeRegistries.BLOCKS.getKey(Blocks.DIRT));
-
-        if (Config.logDirtBlock)
-            LOGGER.info("DIRT BLOCK >> {}", ForgeRegistries.BLOCKS.getKey(Blocks.DIRT));
-
-        LOGGER.info(Config.magicNumberIntroduction + Config.magicNumber);
-
-        Config.items.forEach((item) -> LOGGER.info("ITEM >> {}", item.toString()));
-
-        // 绑定 AEBaseEntityBlock 的方块实体类型与 tickers，避免 blockEntityClass 为空导致的 NPE
+        // 绑定 AEBaseEntityBlock 的方块实体类型与 tickers
         event.enqueueWork(() -> {
             try {
                 if (BEAM_FORMER_BLOCK.get() instanceof BeamFormerBlock bf) {
@@ -151,30 +129,14 @@ public class ME_Beam_Former {
         });
     }
 
-    // Add the example block item to the building blocks tab
-    private void addCreative(BuildCreativeModeTabContentsEvent event)
-    {
-        // 不再向任何原版标签页注入物品；物品仅在自定义页签中展示
-    }
-    // You can use SubscribeEvent and let the Event Bus discover methods to call
-    @SubscribeEvent
-    public void onServerStarting(ServerStartingEvent event) {
-        // Do something when the server starts
-        LOGGER.info("HELLO from server starting");
-    }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
     @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)
     public static class ClientModEvents {
 
         @SubscribeEvent
-        public static void onClientSetup(FMLClientSetupEvent event)
-        {
-            // Some client setup code
-            LOGGER.info("HELLO FROM CLIENT SETUP");
-            LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
-
-            // Register BER for our block entity
+        public static void onClientSetup(FMLClientSetupEvent event) {
+            // 注册方块实体渲染器与渲染层
             event.enqueueWork(() -> {
                 BlockEntityRenderers.register(BEAM_FORMER_BE.get(), ctx -> new BeamFormerBER(ctx));
                 // 非完整方块模型：使用 cutout 渲染层，匹配模型中的 render_type: "cutout"

@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " A ",
+    " B ",
+    " C "
+  ],
+  "key": {
+    "A": { "item": "ae2:wireless_receiver" },
+    "B": { "item": "ae2:logic_processor" },
+    "C": { "item": "ae2:fluix_glass_cable" }
+  },
+  "result": {
+    "item": "me_beam_former:beam_former_part",
+    "count": 1
+  }
+}
