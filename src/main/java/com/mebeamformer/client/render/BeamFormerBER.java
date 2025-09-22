@@ -22,7 +22,6 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         if (te == null) return;
         BlockState state = te.getBlockState();
         if (!(state.getBlock() instanceof BeamFormerBlock)) return;
-        // 注意：客户端渲染不可依赖 AE2 的 ManagedGridNode（客户端侧通常为 null / 不在线）
         // 渲染条件仅依据服务端同步过来的 beamLength 和可见性检查
         Direction dir = state.getValue(BeamFormerBlock.FACING);
         int len = Math.max(0, te.getBeamLength());
