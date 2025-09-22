@@ -75,6 +75,9 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
             // 不强制断开 AE 连接；节点未创建时并不存在可销毁连接
             return;
         }
+
+        // 注意：即使本端离线/不供电，也允许继续向前扫描并尝试建立 AE 连接；
+        // 渲染仍然受在线/供电状态门控。
         BlockPos cur = pos;
         int max = 32;
         int len = 0;
@@ -108,20 +111,38 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
             }
         }
 
-        // 对端必须至少已创建节点，否则暂不形成光束
+        // 对端必须至少已创建节点；连接的建立不要求在线/上电（避免电力依赖的鸡生蛋问题）
         if (target != null) {
             var tManaged = target.getMainNode();
             var tNode = (tManaged == null) ? null : tManaged.getNode();
-            if (tNode == null) {
-                target = null;
-            }
-        }
+            if (tNode != null) {
+                // 建立/复用连接
+                be.tryConnect(target, len);
 
-        if (target != null) {
-            be.tryConnect(target, len);
-            // 更新状态
-            if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.BEAMING) {
-                level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.BEAMING), 3);
+                // 仅当两端都在线且上电时才渲染（保持 BEAMING）；否则清零渲染长度但保留连接
+                var aManaged = be.getMainNode();
+                boolean aOk = aManaged != null && aManaged.isOnline() && aManaged.isPowered();
+                boolean bOk = tManaged.isOnline() && tManaged.isPowered();
+                if (aOk && bOk) {
+                    if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.BEAMING) {
+                        level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.BEAMING), 3);
+                    }
+                } else {
+                    int oldA = be.beamLength;
+                    be.beamLength = 0;
+                    if (state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+                        level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
+                    }
+                    if (oldA != 0) be.markForUpdate();
+
+                    BlockState tState = target.getBlockState();
+                    int oldB = target.beamLength;
+                    target.beamLength = 0;
+                    if (tState.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
+                        level.setBlock(target.getBlockPos(), tState.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
+                    }
+                    if (oldB != 0) target.markForUpdate();
+                }
             }
         } else {
             int old = be.beamLength;
