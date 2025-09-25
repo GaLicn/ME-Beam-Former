@@ -29,25 +29,40 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
     private List<BlockPos> clientActiveTargets = Collections.emptyList();
     // 上一次服务端可见集合，用于决定是否 markForUpdate()
     private final Set<BlockPos> lastActiveSet = new HashSet<>();
+    // 缓存当前暴露的背面方向，避免每 tick 重复设置
+    private Direction lastExposedBack = null;
 
     public OmniBeamFormerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.OMNI_BEAM_FORMER_BE.get(), pos, state);
         this.getMainNode().setFlags(GridFlags.DENSE_CAPACITY);
     }
 
-    // 全向：六面都可连接致密/智能线缆
+    // 仅背面允许连接致密/智能线缆（与普通成型器一致）
     @Override
     public AECableType getCableConnectionType(Direction dir) {
-        return AECableType.SMART;
+        Direction facing = this.getBlockState().getValue(OmniBeamFormerBlock.FACING);
+        return dir == facing.getOpposite() ? AECableType.SMART : AECableType.NONE;
     }
 
     @Override
     public Set<Direction> getGridConnectableSides(appeng.api.orientation.BlockOrientation orientation) {
-        return EnumSet.allOf(Direction.class);
+        Direction facing = this.getBlockState().getValue(OmniBeamFormerBlock.FACING);
+        return EnumSet.of(facing.getOpposite());
     }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, OmniBeamFormerBlockEntity be) {
         if (be.isRemoved()) return;
+
+        // 强制仅暴露背面为可连接面
+        Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
+        Direction back = facing.getOpposite();
+        if (be.lastExposedBack != back) {
+            var managed = be.getMainNode();
+            if (managed != null) {
+                managed.setExposedOnSides(EnumSet.of(back));
+            }
+            be.lastExposedBack = back;
+        }
 
         IManagedGridNode myManaged = be.getMainNode();
         var myNode = myManaged != null ? myManaged.getNode() : null;

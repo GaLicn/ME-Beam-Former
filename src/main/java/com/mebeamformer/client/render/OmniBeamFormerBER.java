@@ -46,8 +46,8 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         var targets = be.getClientActiveTargets();
         if (targets == null || targets.isEmpty()) return;
 
-        // 厚度略细一些，避免多束重叠过粗
-        float thickness = 0.28f;
+        // 厚度与普通光束成型器一致
+        float thickness = 0.10f;
         for (BlockPos t : targets) {
             float vx = (float) (t.getX() - pos.getX());
             float vy = (float) (t.getY() - pos.getY());
