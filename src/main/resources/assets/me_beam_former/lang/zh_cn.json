@@ -2,8 +2,14 @@
   "itemGroup.me_beam_former.example_tab": "ME 光束成型器",
 
   "block.me_beam_former.beam_former_block": "巨型ME 光束成型器",
+  "block.me_beam_former.omni_beam_former_block": "全向ME 光束成型器",
   "item.me_beam_former.beam_former_part": "ME 光束成型器",
+  "item.me_beam_former.laser_binding_tool": "光束绑定器",
 
   "tooltip.me_beam_former.beam_former_part": "用于在 ME 网络内发射/接收能量光束",
-  "tooltip.me_beam_former.beam_former_block": "仅背面可连接线缆；需两个相对放置以形成光束"
+  "tooltip.me_beam_former.beam_former_block": "仅背面可连接线缆；需两个相对放置以形成光束",
+  "tooltip.me_beam_former.binding.set": "已设置首个节点：(%s, %s, %s)",
+  "tooltip.me_beam_former.binding.linked": "已绑定：(%s, %s, %s) ⇄ (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.cleared": "已清除首个节点",
+  "tooltip.me_beam_former.binding.invalid": "首个节点无效或已不存在"
 }

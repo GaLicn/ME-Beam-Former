@@ -35,6 +35,10 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import com.mebeamformer.block.BeamFormerBlock;
 import com.mebeamformer.blockentity.BeamFormerBlockEntity;
 import com.mebeamformer.client.render.BeamFormerBER;
+import com.mebeamformer.block.OmniBeamFormerBlock;
+import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
+import com.mebeamformer.client.render.OmniBeamFormerBER;
+import com.mebeamformer.item.LaserBindingTool;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -74,6 +78,24 @@ public class ME_Beam_Former {
     public static final RegistryObject<BlockEntityType<BeamFormerBlockEntity>> BEAM_FORMER_BE = BLOCK_ENTITIES.register("beam_former_block",
             () -> BlockEntityType.Builder.of(BeamFormerBlockEntity::new, BEAM_FORMER_BLOCK.get()).build(null));
 
+    // Omni Beam Former Block + Item + BlockEntity
+    public static final RegistryObject<Block> OMNI_BEAM_FORMER_BLOCK = MY_BLOCKS.register("omni_beam_former_block",
+            () -> new OmniBeamFormerBlock(BlockBehaviour.Properties
+                    .of()
+                    .mapColor(MapColor.METAL)
+                    .strength(0.3f)
+                    .sound(SoundType.GLASS)
+                    .noOcclusion()
+            ));
+    public static final RegistryObject<Item> OMNI_BEAM_FORMER_BLOCK_ITEM = ITEMS.register("omni_beam_former_block",
+            () -> new BlockItem(OMNI_BEAM_FORMER_BLOCK.get(), new Item.Properties()));
+    public static final RegistryObject<BlockEntityType<OmniBeamFormerBlockEntity>> OMNI_BEAM_FORMER_BE = BLOCK_ENTITIES.register("omni_beam_former_block",
+            () -> BlockEntityType.Builder.of(OmniBeamFormerBlockEntity::new, OMNI_BEAM_FORMER_BLOCK.get()).build(null));
+
+    // Laser Binding Tool
+    public static final RegistryObject<Item> LASER_BINDING_TOOL = ITEMS.register("laser_binding_tool",
+            () -> new LaserBindingTool(new Item.Properties().stacksTo(1)));
+
     // 创造物品栏页签：使用“光束器方块”作为图标，展示本模组核心内容
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
@@ -83,6 +105,8 @@ public class ME_Beam_Former {
                 // 展示：AE2 部件与方块
                 output.accept(BEAM_FORMER_PART_ITEM.get());
                 output.accept(BEAM_FORMER_BLOCK_ITEM.get());
+                output.accept(OMNI_BEAM_FORMER_BLOCK_ITEM.get());
+                output.accept(LASER_BINDING_TOOL.get());
             }).build());
 
     public ME_Beam_Former() {
@@ -123,8 +147,16 @@ public class ME_Beam_Former {
                             com.mebeamformer.blockentity.BeamFormerBlockEntity::serverTick
                     );
                 }
+                if (OMNI_BEAM_FORMER_BLOCK.get() instanceof OmniBeamFormerBlock obf) {
+                    obf.setBlockEntity(
+                            com.mebeamformer.blockentity.OmniBeamFormerBlockEntity.class,
+                            OMNI_BEAM_FORMER_BE.get(),
+                            com.mebeamformer.blockentity.OmniBeamFormerBlockEntity::clientTick,
+                            com.mebeamformer.blockentity.OmniBeamFormerBlockEntity::serverTick
+                    );
+                }
             } catch (Throwable t) {
-                LOGGER.error("Failed to bind BlockEntity to BeamFormerBlock", t);
+                LOGGER.error("Failed to bind BlockEntities", t);
             }
         });
     }
@@ -139,9 +171,14 @@ public class ME_Beam_Former {
             // 注册方块实体渲染器与渲染层
             event.enqueueWork(() -> {
                 BlockEntityRenderers.register(BEAM_FORMER_BE.get(), ctx -> new BeamFormerBER(ctx));
+                BlockEntityRenderers.register(OMNI_BEAM_FORMER_BE.get(), ctx -> new OmniBeamFormerBER(ctx));
                 // 非完整方块模型：使用 cutout 渲染层，匹配模型中的 render_type: "cutout"
                 net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
                         BEAM_FORMER_BLOCK.get(),
+                        net.minecraft.client.renderer.RenderType.cutout()
+                );
+                net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
+                        OMNI_BEAM_FORMER_BLOCK.get(),
                         net.minecraft.client.renderer.RenderType.cutout()
                 );
             });
