@@ -23,6 +23,9 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import appeng.block.AEBaseEntityBlock;
 
@@ -38,6 +41,42 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
         public String toString() { return name; }
     }
     public static final EnumProperty<Status> STATUS = EnumProperty.create("status", Status.class);
+
+    // 为每个朝向缓存VoxelShape
+    private static final Map<Direction, VoxelShape> SHAPES;
+    
+    static {
+        SHAPES = new EnumMap<>(Direction.class);
+        
+        // 为每个朝向创建对应的形状
+        for (Direction facing : Direction.values()) {
+            VoxelShape shape;
+            switch (facing) {
+                case NORTH:
+                    shape = Block.box(2, 2, 0, 14, 14, 8);
+                    break;
+                case SOUTH:
+                    shape = Block.box(2, 2, 8, 14, 14, 16);
+                    break;
+                case WEST:
+                    shape = Block.box(0, 2, 2, 8, 14, 14);
+                    break;
+                case EAST:
+                    shape = Block.box(8, 2, 2, 16, 14, 14);
+                    break;
+                case UP:
+                    shape = Block.box(2, 8, 2, 14, 16, 14);
+                    break;
+                case DOWN:
+                    shape = Block.box(2, 0, 2, 14, 8, 14);
+                    break;
+                default:
+                    shape = Block.box(2, 2, 8, 14, 14, 16); // 默认南朝向
+                    break;
+            }
+            SHAPES.put(facing, shape);
+        }
+    }
 
     public OmniBeamFormerBlock(BlockBehaviour.Properties props) {
         super(props);
@@ -99,13 +138,17 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
     @Override
     public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) { return true; }
 
-    private static final VoxelShape SELECTION = Block.box(2, 2, 8, 14, 14, 16);
+    @Override
+    public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) { 
+        Direction facing = state.getValue(FACING);
+        return SHAPES.get(facing);
+    }
 
     @Override
-    public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) { return SELECTION; }
-
-    @Override
-    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) { return SELECTION; }
+    public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) { 
+        Direction facing = state.getValue(FACING);
+        return SHAPES.get(facing);
+    }
 
     @Override
     public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) { return 0; }

@@ -24,6 +24,9 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumMap;
+import java.util.Map;
+
 import com.mebeamformer.blockentity.BeamFormerBlockEntity;
 import appeng.block.AEBaseEntityBlock;
 
@@ -113,19 +116,57 @@ public class BeamFormerBlock extends AEBaseEntityBlock<BeamFormerBlockEntity> {
         return true;
     }
 
+    // 为每个朝向缓存VoxelShape
+    private static final Map<Direction, VoxelShape> SHAPES;
+    
+    static {
+        SHAPES = new EnumMap<>(Direction.class);
+        
+        // 为每个朝向创建对应的形状
+        for (Direction facing : Direction.values()) {
+            VoxelShape shape;
+            switch (facing) {
+                case NORTH:
+                    shape = Block.box(2, 2, 0, 14, 14, 8);
+                    break;
+                case SOUTH:
+                    shape = Block.box(2, 2, 8, 14, 14, 16);
+                    break;
+                case WEST:
+                    shape = Block.box(0, 2, 2, 8, 14, 14);
+                    break;
+                case EAST:
+                    shape = Block.box(8, 2, 2, 16, 14, 14);
+                    break;
+                case UP:
+                    shape = Block.box(2, 8, 2, 14, 16, 14);
+                    break;
+                case DOWN:
+                    shape = Block.box(2, 0, 2, 14, 8, 14);
+                    break;
+                default:
+                    shape = Block.box(2, 2, 8, 14, 14, 16); // 默认南朝向
+                    break;
+            }
+            SHAPES.put(facing, shape);
+        }
+    }
+
     // 可选：提供更贴近模型的大致选择框，避免完全方块造成的误选
-    private static final VoxelShape SELECTION = Block.box(2, 2, 8, 14, 14, 16); // 以南朝向为基准的主体
+    // private static final VoxelShape SELECTION = Block.box(2, 2, 8, 14, 14, 16); // 以南朝向为基准的主体
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        // 简化：不根据朝向旋转，提供一个较小的选择框即可；若需严格，可后续按 FACING 旋转形状
-        return SELECTION;
+        // 根据朝向返回对应的形状
+        Direction facing = state.getValue(FACING);
+        return SHAPES.get(facing);
     }
 
     @Override
     public VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
-        // 碰撞体积与选择框一致，避免“看得见/撞不到”或“撞到隐形盒”的违和
-        return SELECTION;
+        // 碰撞体积与选择框一致，避免"看得见/撞不到"或"撞到隐形盒"的违和
+        Direction facing = state.getValue(FACING);
+        return SHAPES.get(facing);
     }
 
     @Override
