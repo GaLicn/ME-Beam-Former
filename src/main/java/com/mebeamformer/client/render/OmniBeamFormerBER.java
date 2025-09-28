@@ -79,17 +79,41 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             float vy = targetY - startY;
             float vz = targetZ - startZ;
             
+            // 计算向量长度用于归一化
+            double vectorLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
+            if (vectorLength <= 0.2) continue; // 如果距离太短，跳过这条光束
+            
+            // 归一化向量
+            float normalizedVx = (float) (vx / vectorLength);
+            float normalizedVy = (float) (vy / vectorLength);
+            float normalizedVz = (float) (vz / vectorLength);
+            
+            // 起点向终点方向缩进0.15个方块
+            float adjustedStartX = startX + normalizedVx * 0.2f;
+            float adjustedStartY = startY + normalizedVy * 0.2f;
+            float adjustedStartZ = startZ + normalizedVz * 0.2f;
+            
+            // 终点向光束方向延伸0.1个方块
+            float adjustedTargetX = targetX + normalizedVx * 0.1f;
+            float adjustedTargetY = targetY + normalizedVy * 0.1f;
+            float adjustedTargetZ = targetZ + normalizedVz * 0.1f;
+            
+            // 重新计算调整后的向量
+            float adjustedVx = adjustedTargetX - adjustedStartX;
+            float adjustedVy = adjustedTargetY - adjustedStartY;
+            float adjustedVz = adjustedTargetZ - adjustedStartZ;
+            
             // 保存当前的PoseStack状态
             poseStack.pushPose();
             
-            // 将渲染原点移动到起点位置（相对于方块中心）
+            // 将渲染原点移动到调整后的起点位置（相对于方块中心）
             poseStack.translate(
-                startX - (pos.getX() + 0.5f), 
-                startY - (pos.getY() + 0.5f), 
-                startZ - (pos.getZ() + 0.5f)
+                adjustedStartX - (pos.getX() + 0.5f), 
+                adjustedStartY - (pos.getY() + 0.5f), 
+                adjustedStartZ - (pos.getZ() + 0.5f)
             );
             
-            BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, vx, vy, vz, r, g, b, packedLight, packedOverlay, thickness);
+            BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, adjustedVx, adjustedVy, adjustedVz, r, g, b, packedLight, packedOverlay, thickness);
             
             // 恢复PoseStack状态
             poseStack.popPose();
