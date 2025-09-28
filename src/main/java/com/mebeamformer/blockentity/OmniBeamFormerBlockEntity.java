@@ -34,8 +34,6 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
     private final Set<BlockPos> lastActiveSet = new HashSet<>();
     // 缓存当前暴露的背面方向，避免每 tick 重复设置
     private Direction lastExposedBack = null;
-    // 光束可见性控制
-    private boolean hideBeam = false;
 
     public OmniBeamFormerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.OMNI_BEAM_FORMER_BE.get(), pos, state);
@@ -169,32 +167,6 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
         return clientActiveTargets;
     }
 
-    public boolean isHideBeam() { return hideBeam; }
-
-    public boolean shouldRenderBeam() {
-        return !hideBeam && clientActiveTargets != null && !clientActiveTargets.isEmpty();
-    }
-
-    public void toggleBeamVisibility() {
-        this.hideBeam = !this.hideBeam;
-        
-        // 同步到所有连接的目标
-        for (BlockPos targetPos : new HashSet<>(this.links)) {
-            var level = this.getLevel();
-            if (level != null) {
-                var tBe = level.getBlockEntity(targetPos);
-                if (tBe instanceof OmniBeamFormerBlockEntity other) {
-                    other.hideBeam = this.hideBeam;
-                    other.markForUpdate();
-                    other.setChanged();
-                }
-            }
-        }
-        
-        this.markForUpdate();
-        this.setChanged();
-    }
-
     @Override
     protected void writeToStream(FriendlyByteBuf data) {
         // 同步当前活跃目标集合
@@ -202,7 +174,6 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
         for (BlockPos p : this.lastActiveSet) {
             data.writeBlockPos(p);
         }
-        data.writeBoolean(this.hideBeam);
     }
 
     @Override
@@ -210,9 +181,7 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
         int n = data.readVarInt();
         List<BlockPos> list = new ArrayList<>(n);
         for (int i = 0; i < n; i++) list.add(data.readBlockPos());
-        boolean oldHide = this.hideBeam;
-        this.hideBeam = data.readBoolean();
-        boolean changed = !list.equals(this.clientActiveTargets) || oldHide != this.hideBeam;
+        boolean changed = !list.equals(this.clientActiveTargets);
         this.clientActiveTargets = list;
         return changed;
     }
@@ -248,7 +217,6 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
             list.add(t);
         }
         tag.put("links", list);
-        tag.putBoolean("hideBeam", this.hideBeam);
     }
 
     @Override
@@ -264,7 +232,6 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
                 this.links.add(pos);
             }
         }
-        this.hideBeam = tag.getBoolean("hideBeam");
     }
 
     /**

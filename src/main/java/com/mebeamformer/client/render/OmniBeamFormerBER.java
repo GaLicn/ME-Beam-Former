@@ -26,9 +26,6 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         Level level = be.getLevel();
         if (level == null) return;
 
-        // 使用BlockEntity的shouldRenderBeam方法来决定是否渲染
-        if (!be.shouldRenderBeam()) return;
-
         // 颜色：从任意相邻 IColorableBlockEntity 读取最鲜艳变体，否则白色
         float r = 1f, g = 1f, b = 1f;
         BlockPos pos = be.getBlockPos();
@@ -48,6 +45,7 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         }
 
         var targets = be.getClientActiveTargets();
+        if (targets == null || targets.isEmpty()) return;
         
         // 获取方块朝向
         Direction facing = state.getValue(OmniBeamFormerBlock.FACING);

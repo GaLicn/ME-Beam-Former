@@ -161,17 +161,6 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player,
                                 InteractionHand hand, BlockHitResult hit) {
-        // Shift 右键切换光束可见性
-        if (player.isShiftKeyDown()) {
-            BlockEntity blockEntity = level.getBlockEntity(pos);
-            if (blockEntity instanceof OmniBeamFormerBlockEntity obf) {
-                if (!level.isClientSide) {
-                    obf.toggleBeamVisibility();
-                }
-                return InteractionResult.SUCCESS;
-            }
-        }
-        
         // 调用父类的默认处理（如内存卡等）
         return super.use(state, level, pos, player, hand, hit);
     }
