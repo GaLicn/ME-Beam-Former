@@ -11,6 +11,9 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 
 import com.mebeamformer.block.BeamFormerBlock;
 import com.mebeamformer.ME_Beam_Former;
@@ -277,5 +280,45 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         // 保证在移除时清理连接，避免状态在客户端残留
         super.setRemoved();
         this.disconnect();
+    }
+
+    /**
+     * 重写渲染边界框以防止视锥体剔除导致的光束消失问题
+     */
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public AABB getRenderBoundingBox() {
+        BlockPos pos = getBlockPos();
+        BlockState state = getBlockState();
+        
+        if (!(state.getBlock() instanceof BeamFormerBlock)) {
+            // 默认较大边界框
+            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
+                           pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
+        }
+        
+        Direction dir = state.getValue(BeamFormerBlock.FACING);
+        int len = Math.max(0, this.beamLength);
+        
+        if (len <= 0) {
+            // 没有光束时也使用较大边界框
+            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
+                           pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
+        }
+        
+        BlockPos endPos = pos.relative(dir, len);
+        
+        // 计算包含光束起点和终点的边界框
+        double minX = Math.min(pos.getX(), endPos.getX());
+        double minY = Math.min(pos.getY(), endPos.getY());
+        double minZ = Math.min(pos.getZ(), endPos.getZ());
+        double maxX = Math.max(pos.getX() + 1, endPos.getX() + 1);
+        double maxY = Math.max(pos.getY() + 1, endPos.getY() + 1);
+        double maxZ = Math.max(pos.getZ() + 1, endPos.getZ() + 1);
+        
+        // 大幅扩大边界框，特别针对近距离视角问题
+        double expansion = 5.0;
+        return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
+                       maxX + expansion, maxY + expansion, maxZ + expansion);
     }
 }

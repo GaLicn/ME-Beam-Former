@@ -14,6 +14,9 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 
 import java.util.*;
 
@@ -227,5 +230,42 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
                 this.links.add(pos);
             }
         }
+    }
+
+    /**
+     * 重写渲染边界框以防止视锥体剔除导致的光束消失问题
+     */
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public AABB getRenderBoundingBox() {
+        // 如果没有目标，使用较大的默认边界框
+        if (clientActiveTargets == null || clientActiveTargets.isEmpty()) {
+            BlockPos pos = getBlockPos();
+            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
+                           pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
+        }
+
+        BlockPos pos = getBlockPos();
+        // 计算包含所有目标的边界框
+        double minX = pos.getX();
+        double minY = pos.getY();
+        double minZ = pos.getZ();
+        double maxX = pos.getX() + 1;
+        double maxY = pos.getY() + 1;
+        double maxZ = pos.getZ() + 1;
+
+        for (BlockPos target : clientActiveTargets) {
+            minX = Math.min(minX, target.getX());
+            minY = Math.min(minY, target.getY());
+            minZ = Math.min(minZ, target.getZ());
+            maxX = Math.max(maxX, target.getX() + 1);
+            maxY = Math.max(maxY, target.getY() + 1);
+            maxZ = Math.max(maxZ, target.getZ() + 1);
+        }
+
+        // 大幅扩大边界框，特别针对近距离视角问题
+        double expansion = 5.0;
+        return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
+                       maxX + expansion, maxY + expansion, maxZ + expansion);
     }
 }
