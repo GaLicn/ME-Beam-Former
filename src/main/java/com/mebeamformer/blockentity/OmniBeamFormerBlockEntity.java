@@ -214,6 +214,18 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
         tag.put("links", list);
     }
 
-    // 读取持久化数据的钩子由 AE2 基类提供（load 为 final）。
-    // 我们将在确认正确的钩子方法名后补充读取实现。
+    @Override
+    public void loadTag(CompoundTag tag) {
+        super.loadTag(tag);
+        // 读取持久化的链接数据 - 修复重新进入游戏后连接断开的问题
+        this.links.clear();
+        if (tag.contains("links", Tag.TAG_LIST)) {
+            ListTag list = tag.getList("links", Tag.TAG_COMPOUND);
+            for (int i = 0; i < list.size(); i++) {
+                CompoundTag t = list.getCompound(i);
+                BlockPos pos = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
+                this.links.add(pos);
+            }
+        }
+    }
 }
