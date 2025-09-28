@@ -1,6 +1,6 @@
 {
   "parent": "item/generated",
   "textures": {
-    "layer0": "minecraft:item/spyglass"
+    "layer0": "me_beam_former:item/laser_binding_tool"
   }
 }

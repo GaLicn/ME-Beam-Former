@@ -1,0 +1,18 @@
+{
+  "itemGroup.me_beam_former.example_tab": "ME Beam Former",
+
+  "block.me_beam_former.beam_former_block": "Mega ME Beam Former",
+  "block.me_beam_former.omni_beam_former_block": "Omni ME Beam Former",
+  "item.me_beam_former.beam_former_part": "ME Beam Former",
+  "item.me_beam_former.laser_binding_tool": "Laser Binding Tool",
+
+  "tooltip.me_beam_former.beam_former_part": "Used to emit/receive energy beams within ME networks",
+  "tooltip.me_beam_former.beam_former_block": "Only back face can connect cables; requires two opposite placement to form beam",
+  "tooltip.me_beam_former.binding.set": "Source beam former selected: (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.linked": "Connected: (%s, %s, %s) → (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.unlinked": "Disconnected: (%s, %s, %s) ✗ (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.cleared": "Source beam former cleared",
+  "tooltip.me_beam_former.binding.invalid": "Source beam former is invalid or no longer exists",
+  "tooltip.me_beam_former.binding.no_source": "Please use Shift+Right Click to select source beam former first",
+  "tooltip.me_beam_former.binding.self_link": "Cannot connect to itself"
+} 

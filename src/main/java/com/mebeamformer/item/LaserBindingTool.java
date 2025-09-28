@@ -14,7 +14,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 public class LaserBindingTool extends Item {
-    private static final String TAG_FIRST = "FirstPos";
+    private static final String TAG_SOURCE = "SourcePos";
 
     public LaserBindingTool(Properties props) {
         super(props);
@@ -35,41 +35,58 @@ public class LaserBindingTool extends Item {
         }
 
         CompoundTag tag = stack.getOrCreateTag();
-        if (!tag.contains(TAG_FIRST)) {
-            // 首次绑定点
+        
+        if (player != null && player.isShiftKeyDown()) {
+            // Shift+右键：选定被连接的成型器（源）
             CompoundTag t = new CompoundTag();
             t.putInt("x", pos.getX());
             t.putInt("y", pos.getY());
             t.putInt("z", pos.getZ());
-            tag.put(TAG_FIRST, t);
-            if (player != null) {
-                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.set", pos.getX(), pos.getY(), pos.getZ()), true);
-            }
+            tag.put(TAG_SOURCE, t);
+            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.set", pos.getX(), pos.getY(), pos.getZ()), true);
             return InteractionResult.CONSUME;
         } else {
-            CompoundTag t = tag.getCompound(TAG_FIRST);
-            BlockPos first = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
-            if (first.equals(pos)) {
-                // 点到相同方块：清空
-                tag.remove(TAG_FIRST);
+            // 普通右键：连接到已选定的源
+            if (!tag.contains(TAG_SOURCE)) {
+                // 没有选定源，提示先用Shift+右键选定
                 if (player != null) {
-                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.cleared"), true);
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.no_source"), true);
                 }
                 return InteractionResult.CONSUME;
             }
-            BlockEntity beFirst = level.getBlockEntity(first);
-            if (beFirst instanceof OmniBeamFormerBlockEntity other) {
-                // 双向建立/追加链接
-                current.addLink(first);
-                other.addLink(pos);
-                tag.remove(TAG_FIRST);
+            
+            CompoundTag t = tag.getCompound(TAG_SOURCE);
+            BlockPos source = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
+            
+            if (source.equals(pos)) {
+                // 点击相同方块：提示不能连接自己
                 if (player != null) {
-                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.linked", first.getX(), first.getY(), first.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.self_link"), true);
                 }
                 return InteractionResult.CONSUME;
+            }
+            
+            BlockEntity beSource = level.getBlockEntity(source);
+            if (beSource instanceof OmniBeamFormerBlockEntity sourceEntity) {
+                // 检查是否已经连接
+                if (sourceEntity.getLinks().contains(pos)) {
+                    // 已连接，断开连接
+                    sourceEntity.removeLink(pos);
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.unlinked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                    }
+                } else {
+                    // 未连接，建立链接：从源到目标的单向连接
+                    sourceEntity.addLink(pos);
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.linked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                    }
+                }
+                // 注意：不清空TAG_SOURCE，保持源信息，可以继续连接/断开其他目标
+                return InteractionResult.CONSUME;
             } else {
-                // 首点不再存在
-                tag.remove(TAG_FIRST);
+                // 源位置不再存在有效的成型器
+                tag.remove(TAG_SOURCE);
                 if (player != null) {
                     player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.invalid"), true);
                 }
@@ -82,9 +99,10 @@ public class LaserBindingTool extends Item {
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
         if (!level.isClientSide && player.isShiftKeyDown()) {
+            // Shift+左键：清空已选定的源
             CompoundTag tag = stack.getTag();
-            if (tag != null && tag.contains(TAG_FIRST)) {
-                tag.remove(TAG_FIRST);
+            if (tag != null && tag.contains(TAG_SOURCE)) {
+                tag.remove(TAG_SOURCE);
                 player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.cleared"), true);
                 return InteractionResultHolder.consume(stack);
             }
