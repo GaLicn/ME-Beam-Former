@@ -25,7 +25,7 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         Level level = be.getLevel();
         if (level == null) return;
 
-        // 颜色：从任意相邻 IColorableBlockEntity 读取，否则白色
+        // 颜色：从任意相邻 IColorableBlockEntity 读取最鲜艳变体，否则白色
         float r = 1f, g = 1f, b = 1f;
         BlockPos pos = be.getBlockPos();
         for (Direction d : Direction.values()) {
@@ -33,7 +33,7 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             if (adj instanceof IColorableBlockEntity cbe) {
                 AEColor color = cbe.getColor();
                 if (color != null) {
-                    int hex = color.mediumVariant;
+                    int hex = color.blackVariant;
                     float scale = 255f;
                     r = ((hex >> 16) & 0xFF) / scale;
                     g = ((hex >> 8) & 0xFF) / scale;

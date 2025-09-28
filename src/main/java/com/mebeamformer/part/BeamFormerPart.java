@@ -235,12 +235,12 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         if (levelRD != null && !isPathClearForRender(levelRD, be.getBlockPos(), dirRD, checkLen)) {
             return;
         }
-        // 颜色来自线缆颜色中等变体
+        // 颜色来自线缆颜色最鲜艳变体
         AEColor color = getHost().getColor();
         float scale = 255f;
-        float r = ((color.mediumVariant >> 16) & 0xFF) / scale;
-        float g = ((color.mediumVariant >> 8) & 0xFF) / scale;
-        float b = (color.mediumVariant & 0xFF) / scale;
+        float r = ((color.blackVariant >> 16) & 0xFF) / scale;
+        float g = ((color.blackVariant >> 8) & 0xFF) / scale;
+        float b = (color.blackVariant & 0xFF) / scale;
 
         var dir = getSide();
         double visibleLen = beamLength > 0 ? beamLength : 0.5d;

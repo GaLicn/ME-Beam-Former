@@ -13,12 +13,12 @@ public final class BeamRenderHelper {
     private static final float MIN_THICKNESS = 0.15f;
     // 使用纯白纹理，配合顶点颜色实现纯色光束
     private static final ResourceLocation BEAM_TEX = new ResourceLocation("minecraft", "textures/misc/white.png");
-    // 颜色调优：提高亮度与对比度（可按需微调）
-    private static final float COLOR_BRIGHTNESS = 1.30f; // >1 提亮，<1 变暗
-    private static final float COLOR_CONTRAST   = 1.05f; // 适度对比以避免去饱和发灰
-    // 饱和度增强，防止 mediumVariant 偏灰
-    private static final float COLOR_SAT_BOOST  = 1.40f; // >1 提升饱和度
-    private static final float COLOR_SAT_MIN    = 0.60f; // 最低饱和度下限
+    // 颜色调优：极大提升饱和度，消除"抹灰"效果
+    private static final float COLOR_BRIGHTNESS = 1.60f; // >1 提亮，<1 变暗 - 增加亮度
+    private static final float COLOR_CONTRAST   = 1.40f; // 大幅增加对比度，让颜色更纯净
+    // 饱和度增强，彻底消除 mediumVariant 偏灰问题
+    private static final float COLOR_SAT_BOOST  = 2.50f; // >1 提升饱和度 - 极大提升饱和度
+    private static final float COLOR_SAT_MIN    = 0.95f; // 最低饱和度下限 - 接近纯色
 
     // 将颜色通道限定在 0..1，并施加对比度/亮度曲线
     private static float adjustChannel(float c) {
@@ -73,8 +73,8 @@ public final class BeamRenderHelper {
         {
             float[] hsv = rgbToHsv(r, g, b);
             float h = hsv[0], s = hsv[1];
-            // 检测近似无色（白/灰），避免被强制上饱和
-            boolean isAchromatic = s < 0.12f || (Math.abs(r - g) < 0.05f && Math.abs(g - b) < 0.05f);
+            // 检测近似无色（白/灰），大幅降低阈值，让更多颜色保持彩色
+            boolean isAchromatic = s < 0.03f || (Math.abs(r - g) < 0.01f && Math.abs(g - b) < 0.01f);
             if (isAchromatic) {
                 // 对白色/灰色：直接使用纯白，获得干净的白色光束
                 r = g = b = 1.0f;
@@ -120,8 +120,8 @@ public final class BeamRenderHelper {
             final int SEGMENTS = 20;
             // Neon look: [outer halo, inner halo, colored core, white hot core, tiny white spark]
             final float[] SHELL_SCALE = new float[]{2.6f, 1.9f, 1.20f, 0.95f, 0.60f};
-            // 外圈稍淡，核心更实，整体对比更强
-            final float[] SHELL_ALPHA = new float[]{0.04f, 0.10f, 0.95f, 1.00f, 1.00f};
+            // 外圈更亮，核心更实，整体更鲜艳
+            final float[] SHELL_ALPHA = new float[]{0.12f, 0.25f, 0.98f, 1.00f, 1.00f};
             // Axis vector
             float ax = (float) dx;
             float ay = (float) dy;
@@ -232,8 +232,8 @@ public final class BeamRenderHelper {
                         cg = 1f;
                         cb = 1f;
                     } else if (shell == 2) {
-                        // mix color with white by 30%
-                        float mix = 0.25f; // 降低向白混合，保持颜色饱和
+                        // 几乎不混合白色，保持纯色鲜艳
+                        float mix = 0.02f; // 极少白色混合，消除"抹灰"效果
                         cr = r * (1f - mix) + 1f * mix;
                         cg = g * (1f - mix) + 1f * mix;
                         cb = b * (1f - mix) + 1f * mix;
@@ -279,7 +279,7 @@ public final class BeamRenderHelper {
             {
                 float[] hsv = rgbToHsv(r, g, b);
                 float h = hsv[0], s = hsv[1];
-                boolean isAchromatic = s < 0.12f || (Math.abs(r - g) < 0.05f && Math.abs(g - b) < 0.05f);
+                boolean isAchromatic = s < 0.03f || (Math.abs(r - g) < 0.01f && Math.abs(g - b) < 0.01f);
                 if (isAchromatic) {
                     r = g = b = 1.0f;
                 } else {

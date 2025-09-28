@@ -35,14 +35,14 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
         if (!isPathClearForRender(level, pos, dir, checkLen)) return;
 
-        // 颜色：尝试从背面相邻的线缆总线获取 AE 颜色（中等变体），否则默认为白色
+        // 颜色：尝试从背面相邻的线缆总线获取 AE 颜色（最鲜艳变体），否则默认为白色
         float r = 1f, g = 1f, b = 1f;
         BlockPos back = pos.relative(dir.getOpposite());
         var backBe = level.getBlockEntity(back);
         if (backBe instanceof IColorableBlockEntity cbe) {
             AEColor color = cbe.getColor();
             if (color != null) {
-                int hex = color.mediumVariant;
+                int hex = color.blackVariant;
                 float scale = 255f;
                 r = ((hex >> 16) & 0xFF) / scale;
                 g = ((hex >> 8) & 0xFF) / scale;
