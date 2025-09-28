@@ -68,6 +68,19 @@ public class LaserBindingTool extends Item {
             
             BlockEntity beSource = level.getBlockEntity(source);
             if (beSource instanceof OmniBeamFormerBlockEntity sourceEntity) {
+                // 检查距离限制：水平范围16x16，垂直范围32
+                int dx = Math.abs(pos.getX() - source.getX());
+                int dy = Math.abs(pos.getY() - source.getY());
+                int dz = Math.abs(pos.getZ() - source.getZ());
+                
+                if (dx > 16 || dz > 16 || dy > 32) {
+                    // 超出连接范围
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.out_of_range"), true);
+                    }
+                    return InteractionResult.CONSUME;
+                }
+                
                 // 检查是否已经连接
                 if (sourceEntity.getLinks().contains(pos)) {
                     // 已连接，断开连接

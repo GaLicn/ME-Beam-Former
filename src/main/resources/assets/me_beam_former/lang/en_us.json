@@ -14,5 +14,6 @@
   "tooltip.me_beam_former.binding.cleared": "Source beam former cleared",
   "tooltip.me_beam_former.binding.invalid": "Source beam former is invalid or no longer exists",
   "tooltip.me_beam_former.binding.no_source": "Please use Shift+Right Click to select source beam former first",
-  "tooltip.me_beam_former.binding.self_link": "Cannot connect to itself"
+  "tooltip.me_beam_former.binding.self_link": "Cannot connect to itself",
+  "tooltip.me_beam_former.binding.out_of_range": "Connection distance out of range! Limit: 16x16 horizontal, 32 vertical"
 } 
