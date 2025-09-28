@@ -7,7 +7,7 @@
   ],
   "key": {
     "I": { "item": "minecraft:iron_ingot" },
-    "R": { "item": "minecraft:redstone" },
+    "R": { "item": "ae2:fluix_pearl" },
     "G": { "item": "minecraft:glass" }
   },
   "result": { "item": "me_beam_former:laser_binding_tool", "count": 1 }
