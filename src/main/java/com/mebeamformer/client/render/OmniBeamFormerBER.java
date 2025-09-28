@@ -46,13 +46,32 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         var targets = be.getClientActiveTargets();
         if (targets == null || targets.isEmpty()) return;
 
+        // 获取方块朝向
+        Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
+        
+        // 计算朝向偏移量 (0.25个方块)
+        float offsetX = facing.getStepX() * 0.25f;
+        float offsetY = facing.getStepY() * 0.25f;
+        float offsetZ = facing.getStepZ() * 0.25f;
+
         // 厚度与普通光束成型器一致
         float thickness = 0.10f;
         for (BlockPos t : targets) {
+            // 保存当前的PoseStack状态
+            poseStack.pushPose();
+            
+            // 将整个渲染坐标系向朝向方向偏移0.5个方块
+            poseStack.translate(offsetX, offsetY, offsetZ);
+            
+            // 计算从偏移后的方块位置到偏移后的目标位置的向量
             float vx = (float) (t.getX() - pos.getX());
             float vy = (float) (t.getY() - pos.getY());
             float vz = (float) (t.getZ() - pos.getZ());
+            
             BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, vx, vy, vz, r, g, b, packedLight, packedOverlay, thickness);
+            
+            // 恢复PoseStack状态
+            poseStack.popPose();
         }
     }
 }
