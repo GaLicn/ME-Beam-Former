@@ -22,6 +22,11 @@ import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -152,4 +157,22 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
 
     @Override
     public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) { return 0; }
+
+    @Override
+    public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player,
+                                InteractionHand hand, BlockHitResult hit) {
+        // Shift 右键切换光束可见性
+        if (player.isShiftKeyDown()) {
+            BlockEntity blockEntity = level.getBlockEntity(pos);
+            if (blockEntity instanceof OmniBeamFormerBlockEntity obf) {
+                if (!level.isClientSide) {
+                    obf.toggleBeamVisibility();
+                }
+                return InteractionResult.SUCCESS;
+            }
+        }
+        
+        // 调用父类的默认处理（如内存卡等）
+        return super.use(state, level, pos, player, hand, hit);
+    }
 }

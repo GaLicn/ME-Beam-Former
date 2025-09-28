@@ -25,6 +25,7 @@ import appeng.api.orientation.RelativeSide;
 public class BeamFormerBlockEntity extends AENetworkBlockEntity {
     private int beamLength = 0;
     private IGridConnection connection = null;
+    private boolean hideBeam = false;
     // 缓存当前暴露的背面方向；由于我们的朝向来自 BlockState.FACING，不一定触发 AE 的 onOrientationChanged，
     // 因此在 serverTick 中检测并刷新暴露面，确保只有背面可连接。
     private Direction lastExposedBack = null;
@@ -55,6 +56,38 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
     }
 
     public int getBeamLength() { return beamLength; }
+
+    public boolean isHideBeam() { return hideBeam; }
+
+    public boolean shouldRenderBeam() {
+        return !hideBeam && beamLength > 0;
+    }
+
+    public void toggleBeamVisibility() {
+        this.hideBeam = !this.hideBeam;
+        
+        // 同步到连接的另一端
+        if (this.connection != null) {
+            try {
+                var myNode = this.getMainNode().getNode();
+                if (myNode != null) {
+                    var otherNode = this.connection.getOtherSide(myNode);
+                    if (otherNode != null) {
+                        var owner = otherNode.getOwner();
+                        if (owner instanceof BeamFormerBlockEntity other) {
+                            other.hideBeam = this.hideBeam;
+                            other.markForUpdate();
+                            other.setChanged();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        
+        this.markForUpdate();
+        this.setChanged();
+    }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, BeamFormerBlockEntity be) {
         // 若方块实体已被标记移除，避免任何状态写回，防止被挖掘时“复活”
@@ -259,13 +292,16 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
     @Override
     protected void writeToStream(FriendlyByteBuf data) {
         data.writeVarInt(this.beamLength);
+        data.writeBoolean(this.hideBeam);
     }
 
     @Override
     protected boolean readFromStream(FriendlyByteBuf data) {
-        int old = this.beamLength;
+        int oldLength = this.beamLength;
+        boolean oldHide = this.hideBeam;
         this.beamLength = data.readVarInt();
-        return old != this.beamLength;
+        this.hideBeam = data.readBoolean();
+        return oldLength != this.beamLength || oldHide != this.hideBeam;
     }
 
     @Override
@@ -280,6 +316,18 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         // 保证在移除时清理连接，避免状态在客户端残留
         super.setRemoved();
         this.disconnect();
+    }
+
+    @Override
+    public void saveAdditional(net.minecraft.nbt.CompoundTag tag) {
+        super.saveAdditional(tag);
+        tag.putBoolean("hideBeam", this.hideBeam);
+    }
+
+    @Override
+    public void loadTag(net.minecraft.nbt.CompoundTag tag) {
+        super.loadTag(tag);
+        this.hideBeam = tag.getBoolean("hideBeam");
     }
 
     /**

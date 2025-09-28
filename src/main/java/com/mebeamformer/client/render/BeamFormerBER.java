@@ -22,6 +22,10 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         if (te == null) return;
         BlockState state = te.getBlockState();
         if (!(state.getBlock() instanceof BeamFormerBlock)) return;
+        
+        // 使用BlockEntity的shouldRenderBeam方法来决定是否渲染
+        if (!te.shouldRenderBeam()) return;
+        
         // 渲染条件仅依据服务端同步过来的 beamLength 和可见性检查
         Direction dir = state.getValue(BeamFormerBlock.FACING);
         int len = Math.max(0, te.getBeamLength());
