@@ -1,6 +1,7 @@
 package com.mebeamformer.client.render;
 
 import com.mebeamformer.block.OmniBeamFormerBlock;
+import com.mebeamformer.block.BeamFormerBlock;
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -49,24 +50,44 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         // 获取方块朝向
         Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
         
-        // 计算朝向偏移量 (0.25个方块)
-        float offsetX = facing.getStepX() * 0.25f;
-        float offsetY = facing.getStepY() * 0.25f;
-        float offsetZ = facing.getStepZ() * 0.25f;
-
         // 厚度与普通光束成型器一致
         float thickness = 0.10f;
         for (BlockPos t : targets) {
+            // 获取目标方块的朝向
+            BlockState targetState = level.getBlockState(t);
+            Direction targetFacing = Direction.SOUTH; // 默认朝向
+            
+            // 检查目标方块是否有FACING属性
+            if (targetState.getBlock() instanceof BeamFormerBlock) {
+                targetFacing = targetState.getValue(BeamFormerBlock.FACING);
+            } else if (targetState.getBlock() instanceof OmniBeamFormerBlock) {
+                targetFacing = targetState.getValue(OmniBeamFormerBlock.FACING);
+            }
+            
+            // 计算目标方块中心点向其face方向偏移0.25个方块后的位置
+            float targetX = (float) t.getX() + 0.5f + targetFacing.getStepX() * 0.25f;
+            float targetY = (float) t.getY() + 0.5f + targetFacing.getStepY() * 0.25f;
+            float targetZ = (float) t.getZ() + 0.5f + targetFacing.getStepZ() * 0.25f;
+            
+            // 计算起点位置：当前方块中心点向face方向偏移0.25个方块
+            float startX = (float) pos.getX() + 0.5f + facing.getStepX() * 0.25f;
+            float startY = (float) pos.getY() + 0.5f + facing.getStepY() * 0.25f;
+            float startZ = (float) pos.getZ() + 0.5f + facing.getStepZ() * 0.25f;
+            
+            // 计算从起点到终点的向量
+            float vx = targetX - startX;
+            float vy = targetY - startY;
+            float vz = targetZ - startZ;
+            
             // 保存当前的PoseStack状态
             poseStack.pushPose();
             
-            // 将整个渲染坐标系向朝向方向偏移0.5个方块
-            poseStack.translate(offsetX, offsetY, offsetZ);
-            
-            // 计算从偏移后的方块位置到偏移后的目标位置的向量
-            float vx = (float) (t.getX() - pos.getX());
-            float vy = (float) (t.getY() - pos.getY());
-            float vz = (float) (t.getZ() - pos.getZ());
+            // 将渲染原点移动到起点位置（相对于方块中心）
+            poseStack.translate(
+                startX - (pos.getX() + 0.5f), 
+                startY - (pos.getY() + 0.5f), 
+                startZ - (pos.getZ() + 0.5f)
+            );
             
             BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, vx, vy, vz, r, g, b, packedLight, packedOverlay, thickness);
             
