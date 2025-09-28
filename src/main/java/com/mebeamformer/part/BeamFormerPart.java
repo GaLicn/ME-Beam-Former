@@ -244,7 +244,7 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
         var dir = getSide();
         double visibleLen = beamLength > 0 ? beamLength : 0.5d;
-        com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
+        com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeamForPart(
                 poseStack, buffers, dir, visibleLen, r, g, b, combinedLightIn, combinedOverlayIn);
     }
 

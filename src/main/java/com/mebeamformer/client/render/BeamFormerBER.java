@@ -50,8 +50,8 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
             }
         }
 
-        // 方块形态使用更粗的光束（例如 0.32f）
-        float thickness = 0.32f;
+        // 方块形态使用更粗的光束（例如 0.28f）
+        float thickness = 0.28f;
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
                 poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay, thickness);
     }

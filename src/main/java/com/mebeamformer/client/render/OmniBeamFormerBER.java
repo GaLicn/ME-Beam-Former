@@ -50,8 +50,8 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         // 获取方块朝向
         Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
         
-        // 厚度与普通光束成型器一致
-        float thickness = 0.10f;
+        // 厚度与普通光束成型器一致，稍稍调细
+        float thickness = 0.08f;
         for (BlockPos t : targets) {
             // 获取目标方块的朝向
             BlockState targetState = level.getBlockState(t);

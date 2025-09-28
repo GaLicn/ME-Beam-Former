@@ -10,9 +10,9 @@ import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
 public final class BeamRenderHelper {
-    private static final float MIN_THICKNESS = 0.15f;
+    private static final float MIN_THICKNESS = 0.12f;
     // 使用纯白纹理，配合顶点颜色实现纯色光束
-    private static final ResourceLocation BEAM_TEX = new ResourceLocation("minecraft", "textures/misc/white.png");
+    private static final ResourceLocation BEAM_TEX = ResourceLocation.fromNamespaceAndPath("minecraft", "textures/misc/white.png");
     // 颜色调优：极大提升饱和度，消除"抹灰"效果
     private static final float COLOR_BRIGHTNESS = 1.60f; // >1 提亮，<1 变暗 - 增加亮度
     private static final float COLOR_CONTRAST   = 1.40f; // 大幅增加对比度，让颜色更纯净
@@ -260,8 +260,197 @@ public final class BeamRenderHelper {
         // 结束 renderColoredBeam 方法
     }
 
+    // 专门用于part版的光束渲染，不偏移起点终点
+    public static void renderColoredBeamForPart(PoseStack poseStack,
+                                               MultiBufferSource buffers,
+                                               Direction dir,
+                                               double length,
+                                               float r, float g, float b,
+                                               int light, int overlay) {
+        if (length <= 0) return;
 
-        // 新增：沿任意三维向量渲染光束（用于全向绑定）
+        // Render a beacon-style translucent beam with animated texture.
+        // Use small square cross-section around the center and extend along dir.
+        final float half = Math.max(0.001f, MIN_THICKNESS) / 2f;
+        double dx = 0, dy = 0, dz = 0;
+        switch (dir) {
+            case NORTH -> dz = -length;
+            case SOUTH -> dz = length;
+            case WEST -> dx = -length;
+            case EAST -> dx = length;
+            case DOWN -> dy = -length;
+            case UP -> dy = length;
+        }
+
+        // HSV 提亮 — 保留原有色相与饱和度，只将明度 V 拉满为 1.0，确保颜色与线缆一致但更亮
+        {
+            float[] hsv = rgbToHsv(r, g, b);
+            float h = hsv[0], s = hsv[1];
+            // 检测近似无色（白/灰），大幅降低阈值，让更多颜色保持彩色
+            boolean isAchromatic = s < 0.03f || (Math.abs(r - g) < 0.01f && Math.abs(g - b) < 0.01f);
+            if (isAchromatic) {
+                // 对白色/灰色：直接使用纯白，获得干净的白色光束
+                r = g = b = 1.0f;
+            } else {
+                // 彩色：提升饱和度，并设置下限，避免偏灰
+                s = Math.min(1.0f, Math.max(s * COLOR_SAT_BOOST, COLOR_SAT_MIN));
+                float v = 1.0f; // 拉满明度
+                float[] rgb = hsvToRgb(h, s, v);
+                r = rgb[0];
+                g = rgb[1];
+                b = rgb[2];
+                // 进一步提升亮度与对比度
+                r = adjustChannel(r);
+                g = adjustChannel(g);
+                b = adjustChannel(b);
+            }
+            // 将 achromatic 标志在后续着色时使用
+            // 通过局部 final 变量捕获
+            final boolean ACHRO = isAchromatic;
+
+            poseStack.pushPose();
+            poseStack.translate(0.5, 0.5, 0.5);
+            // Part版不偏移起点，直接从方块中心开始渲染（去掉BACK_OFFSET逻辑）
+
+            var last = poseStack.last();
+            Matrix4f pose = last.pose();
+            var normalMat = last.normal();
+
+            // 统一获取缓冲（发光半透明）
+            VertexConsumer vcEmissive = buffers.getBuffer(RenderType.entityTranslucentEmissive(BEAM_TEX));
+
+            // 固定 UV，取消滚动动画，避免出现暗条纹；UV 覆盖整个面即可
+            float v0 = 0f;
+            float v1 = 1f;
+
+            float aOuter = 0.40f; // legacy param (kept for reference)
+            float aInner = 1.00f;  // core opacity
+
+            // Build a cylindrical strip: more segments -> smoother cylinder
+            final int SEGMENTS = 20;
+            // Neon look: [outer halo, inner halo, colored core, white hot core, tiny white spark]
+            final float[] SHELL_SCALE = new float[]{2.6f, 1.9f, 1.20f, 0.95f, 0.60f};
+            // 外圈更亮，核心更实，整体更鲜艳
+            final float[] SHELL_ALPHA = new float[]{0.12f, 0.25f, 0.98f, 1.00f, 1.00f};
+
+            // Choose two perpendicular unit vectors (u, v) forming the cross-section basis
+            float ux, uy, uz, vx, vy, vz;
+            switch (dir) {
+                case UP, DOWN ->
+                    // Use X and Z as the perpendicular plane
+                    {
+                        ux = 1f; uy = 0f; uz = 0f; // X axis
+                        vx = 0f; vy = 0f; vz = 1f; // Z axis
+                    }
+                case NORTH, SOUTH ->
+                    // Use X and Y as the perpendicular plane
+                    {
+                        ux = 1f; uy = 0f; uz = 0f; // X axis
+                        vx = 0f; vy = 1f; vz = 0f; // Y axis
+                    }
+                case WEST, EAST ->
+                    // Use Y and Z as the perpendicular plane
+                    {
+                        ux = 0f; uy = 1f; uz = 0f; // Y axis
+                        vx = 0f; vy = 0f; vz = 1f; // Z axis
+                    }
+                default -> {
+                    ux = 1f; uy = 0f; uz = 0f;
+                    vx = 0f; vy = 1f; vz = 0f;
+                }
+            }
+
+            // 使用与原方法完全相同的渲染逻辑
+            for (int shell = 0; shell < SHELL_SCALE.length; shell++) {
+                float radius = half * SHELL_SCALE[shell];
+                float alpha = SHELL_ALPHA[shell];
+
+                for (int i = 0; i < SEGMENTS; i++) {
+                    double a0 = (2 * Math.PI * i) / SEGMENTS;
+                    double a1 = (2 * Math.PI * (i + 1)) / SEGMENTS;
+                    float c0 = (float) Math.cos(a0), s0 = (float) Math.sin(a0);
+                    float c1 = (float) Math.cos(a1), s1 = (float) Math.sin(a1);
+
+                    // ring positions at start (center 0,0,0) and end (shifted by axis)
+                    float sx0 = ux * c0 * radius + vx * s0 * radius;
+                    float sy0 = uy * c0 * radius + vy * s0 * radius;
+                    float sz0 = uz * c0 * radius + vz * s0 * radius;
+                    float sx1 = ux * c1 * radius + vx * s1 * radius;
+                    float sy1 = uy * c1 * radius + vy * s1 * radius;
+                    float sz1 = uz * c1 * radius + vz * s1 * radius;
+
+                    // 轴向偏移：对外圈壳层沿光束轴做极小正向偏移，避免与核心/模型贴面
+                    float EPS_SHIFT = 0.01f;
+                    float ox = 0f, oy = 0f, oz = 0f;
+                    // shell<=1 为外圈光环
+                    if (shell <= 1) {
+                        ox = dir.getStepX() * EPS_SHIFT;
+                        oy = dir.getStepY() * EPS_SHIFT;
+                        oz = dir.getStepZ() * EPS_SHIFT;
+                    }
+
+                    float ex0 = sx0 + (float) dx + ox;
+                    float ey0 = sy0 + (float) dy + oy;
+                    float ez0 = sz0 + (float) dz + oz;
+                    float ex1 = sx1 + (float) dx + ox;
+                    float ey1 = sy1 + (float) dy + oy;
+                    float ez1 = sz1 + (float) dz + oz;
+
+                    // pure color: avoid lighting variation by using zero normals
+                    float nx = 0f, ny = 0f, nz = 0f;
+
+                    // 固定 U，整个条带统一 UV，配合纯白纹理与颜色实现纯色
+                    float u0 = 0f;
+                    float u1 = 1f;
+
+                    // 渲染目标：统一使用发光半透明缓冲
+                    VertexConsumer targetVc = vcEmissive;
+
+                    // white hot cores (shell==3, shell==4) use white; colored core (shell==2) is slightly desaturated toward white for a "bright to white" gradient
+                    float cr, cg, cb;
+                    if (ACHRO) {
+                        // 白/灰输入：所有壳层使用纯白，保证最终视觉为白色
+                        cr = 1f;
+                        cg = 1f;
+                        cb = 1f;
+                    } else if (shell >= 3) {
+                        cr = 1f;
+                        cg = 1f;
+                        cb = 1f;
+                    } else if (shell == 2) {
+                        // 几乎不混合白色，保持纯色鲜艳
+                        float mix = 0.02f; // 极少白色混合，消除"抹灰"效果
+                        cr = r * (1f - mix) + 1f * mix;
+                        cg = g * (1f - mix) + 1f * mix;
+                        cb = b * (1f - mix) + 1f * mix;
+                    } else {
+                        // 外圈光环：使用更鲜艳的颜色，减少白色混合
+                        float mix = 0.10f; // 降低混合比例，保持颜色鲜艳
+                        cr = r * (1f - mix) + 1f * mix;
+                        cg = g * (1f - mix) + 1f * mix;
+                        cb = b * (1f - mix) + 1f * mix;
+                    }
+
+                    int fullLight = 0xF000F0; // 最大亮度，发光效果
+
+                    quadBothSides(pose, normalMat, targetVc,
+                            sx0, sy0, sz0,
+                            sx1, sy1, sz1,
+                            ex1, ey1, ez1,
+                            ex0, ey0, ez0,
+                            cr, cg, cb, alpha,
+                            u0, v0, u1, v1,
+                            fullLight, overlay, nx, ny, nz);
+                }
+            }
+
+            poseStack.popPose();
+        }
+
+        // 结束 renderColoredBeamForPart 方法
+    }
+
+    // 新增：沿任意三维向量渲染光束（用于全向绑定）
         // 输入为世界空间中的向量（以方块中心为起点），向量长度即光束长度。
         public static void renderColoredBeamVector (PoseStack poseStack,
                 MultiBufferSource buffers,
