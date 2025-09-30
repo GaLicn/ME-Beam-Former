@@ -17,6 +17,7 @@
   "tooltip.me_beam_former.binding.tower_linked": "Energy Tower linked to machine: (%s, %s, %s) → (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_unlinked": "Energy Tower unlinked from machine: (%s, %s, %s) ✗ (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_needs_shift": "Wireless Energy Tower requires Shift+Right Click to bind machines",
+  "tooltip.me_beam_former.binding.omni_only": "Omni Beam Former can only connect to other Omni Beam Formers",
   "tooltip.me_beam_former.binding.cleared": "Source beam former cleared",
   "tooltip.me_beam_former.binding.invalid": "Source beam former is invalid or no longer exists",
   "tooltip.me_beam_former.binding.no_source": "Please use Shift+Right Click to select source beam former first",

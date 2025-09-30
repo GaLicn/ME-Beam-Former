@@ -17,6 +17,7 @@
   "tooltip.me_beam_former.binding.tower_linked": "能源塔已连接机器：(%s, %s, %s) → (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_unlinked": "能源塔已断开机器：(%s, %s, %s) ✗ (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_needs_shift": "无线能源感应塔需要 Shift+右键 来绑定机器",
+  "tooltip.me_beam_former.binding.omni_only": "全向光束成型器只能连接其他全向光束成型器",
   "tooltip.me_beam_former.binding.cleared": "已清除源成型器",
   "tooltip.me_beam_former.binding.invalid": "源成型器无效或已不存在",
   "tooltip.me_beam_former.binding.no_source": "请先用 Shift+右键 选定源成型器",

@@ -65,45 +65,50 @@ public class LaserBindingTool extends Item {
                 // 已有源，检查源类型
                 String sourceType = tag.getString(TAG_SOURCE_TYPE);
                 if (TYPE_TOWER.equals(sourceType)) {
-                    // 源是无线能源感应塔，执行绑定逻辑
-                    if (!isLinkable && !hasEnergy) {
+                    // 源是无线能源感应塔
+                    // 如果目标也是ILinkable（如全向光束成型器），优先重新选择它作为源
+                    if (isLinkable) {
+                        // 跳过绑定逻辑，直接到下面的"选择新源"逻辑
+                        // 不做任何处理，继续执行
+                    } else if (hasEnergy) {
+                        // 目标不是ILinkable但有能量能力，执行绑定逻辑
+                        CompoundTag t = tag.getCompound(TAG_SOURCE);
+                        BlockPos source = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
+                        
+                        if (source.equals(pos)) {
+                            // 点击相同方块：提示不能连接自己
+                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.self_link"), true);
+                            return InteractionResult.SUCCESS;
+                        }
+                        
+                        BlockEntity beSource = level.getBlockEntity(source);
+                        if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity) {
+                            // 无线能源感应塔没有距离限制
+                            
+                            // 检查是否已经连接
+                            if (sourceEntity.getLinks().contains(pos)) {
+                                // 已连接，断开连接
+                                sourceEntity.removeLink(pos);
+                                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_unlinked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                            } else {
+                                // 未连接，建立链接：从源到目标的单向连接
+                                sourceEntity.addLink(pos);
+                                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_linked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                            }
+                            return InteractionResult.SUCCESS;
+                        } else {
+                            // 源位置不再存在有效的无线能源感应塔
+                            tag.remove(TAG_SOURCE);
+                            tag.remove(TAG_SOURCE_TYPE);
+                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.invalid"), true);
+                            return InteractionResult.SUCCESS;
+                        }
+                    } else {
                         // 目标既不是ILinkable也没有能量能力，返回PASS
                         return InteractionResult.PASS;
                     }
-                    
-                    CompoundTag t = tag.getCompound(TAG_SOURCE);
-                    BlockPos source = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
-                    
-                    if (source.equals(pos)) {
-                        // 点击相同方块：提示不能连接自己
-                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.self_link"), true);
-                        return InteractionResult.SUCCESS;
-                    }
-                    
-                    BlockEntity beSource = level.getBlockEntity(source);
-                    if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity) {
-                        // 无线能源感应塔没有距离限制
-                        
-                        // 检查是否已经连接
-                        if (sourceEntity.getLinks().contains(pos)) {
-                            // 已连接，断开连接
-                            sourceEntity.removeLink(pos);
-                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_unlinked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
-                        } else {
-                            // 未连接，建立链接：从源到目标的单向连接
-                            sourceEntity.addLink(pos);
-                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_linked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
-                        }
-                        return InteractionResult.SUCCESS;
-                    } else {
-                        // 源位置不再存在有效的无线能源感应塔
-                        tag.remove(TAG_SOURCE);
-                        tag.remove(TAG_SOURCE_TYPE);
-                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.invalid"), true);
-                        return InteractionResult.SUCCESS;
-                    }
                 }
-                // 源是全向光束成型器，继续选择新源的逻辑
+                // 源是全向光束成型器，或源是能源塔但目标是ILinkable，继续选择新源的逻辑
             }
             
             // 没有源，或源是全向光束成型器时，Shift+右键选择新源
@@ -157,10 +162,13 @@ public class LaserBindingTool extends Item {
             }
             
             // 源是全向光束成型器，执行普通右键绑定逻辑
-            // 已选定源，检查目标是否可以连接
-            if (!isLinkable && !hasEnergy) {
-                // 目标既不是ILinkable也没有能量能力，返回PASS让其他交互继续
-                return InteractionResult.PASS;
+            // 全向光束成型器只能连接其他全向光束成型器
+            if (!(be instanceof OmniBeamFormerBlockEntity)) {
+                // 目标不是全向光束成型器
+                if (player != null) {
+                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.omni_only"), true);
+                }
+                return InteractionResult.SUCCESS;
             }
             
             CompoundTag t = tag.getCompound(TAG_SOURCE);
