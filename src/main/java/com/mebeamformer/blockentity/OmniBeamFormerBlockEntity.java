@@ -23,7 +23,7 @@ import java.util.*;
 import com.mebeamformer.ME_Beam_Former;
 import com.mebeamformer.block.OmniBeamFormerBlock;
 
-public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity {
+public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity implements ILinkable {
     // 持久化：绑定目标集合
     private final Set<BlockPos> links = new HashSet<>();
     // 运行时：每个目标的 AE 连接

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "me_beam_former:block/wireless_energy_tower"
+    }
+  }
+} 

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "EEE",
+    "ETE",
+    "EEE"
+  ],
+  "key": {
+    "E": { "tag": "forge:ingots/iron" },
+    "T": { "item": "me_beam_former:omni_beam_former_block" }
+  },
+  "result": { "item": "me_beam_former:wireless_energy_tower", "count": 1 }
+} 

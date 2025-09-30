@@ -143,6 +143,8 @@ dependencies {
     implementation fg.deobf("curse.maven:applied-energistics-2-223794:6852919")
     implementation fg.deobf("curse.maven:jade-324717:6855440")
     implementation fg.deobf("curse.maven:jei-238222:7014291")
+    implementation fg.deobf("curse.maven:mekanism-268560:6552911")
+    implementation fg.deobf("curse.maven:flux-networks-248020:5234697")
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }

@@ -39,6 +39,8 @@ import com.mebeamformer.block.OmniBeamFormerBlock;
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import com.mebeamformer.client.render.OmniBeamFormerBER;
 import com.mebeamformer.item.LaserBindingTool;
+import com.mebeamformer.block.WirelessEnergyTowerBlock;
+import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -96,7 +98,21 @@ public class ME_Beam_Former {
     public static final RegistryObject<Item> LASER_BINDING_TOOL = ITEMS.register("laser_binding_tool",
             () -> new LaserBindingTool(new Item.Properties().stacksTo(1)));
 
-    // 创造物品栏页签：使用“光束器方块”作为图标，展示本模组核心内容
+    // Wireless Energy Tower Block + Item + BlockEntity
+    public static final RegistryObject<Block> WIRELESS_ENERGY_TOWER_BLOCK = MY_BLOCKS.register("wireless_energy_tower",
+            () -> new WirelessEnergyTowerBlock(BlockBehaviour.Properties
+                    .of()
+                    .mapColor(MapColor.METAL)
+                    .strength(3.5f)
+                    .sound(SoundType.METAL)
+                    .requiresCorrectToolForDrops()
+            ));
+    public static final RegistryObject<Item> WIRELESS_ENERGY_TOWER_ITEM = ITEMS.register("wireless_energy_tower",
+            () -> new BlockItem(WIRELESS_ENERGY_TOWER_BLOCK.get(), new Item.Properties()));
+    public static final RegistryObject<BlockEntityType<WirelessEnergyTowerBlockEntity>> WIRELESS_ENERGY_TOWER_BE = BLOCK_ENTITIES.register("wireless_energy_tower",
+            () -> BlockEntityType.Builder.of(WirelessEnergyTowerBlockEntity::new, WIRELESS_ENERGY_TOWER_BLOCK.get()).build(null));
+
+    // 创造物品栏页签：使用"光束器方块"作为图标，展示本模组核心内容
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
             .title(Component.translatable("itemGroup.me_beam_former.example_tab"))
@@ -107,6 +123,7 @@ public class ME_Beam_Former {
                 output.accept(BEAM_FORMER_BLOCK_ITEM.get());
                 output.accept(OMNI_BEAM_FORMER_BLOCK_ITEM.get());
                 output.accept(LASER_BINDING_TOOL.get());
+                output.accept(WIRELESS_ENERGY_TOWER_ITEM.get());
             }).build());
 
     public ME_Beam_Former() {
