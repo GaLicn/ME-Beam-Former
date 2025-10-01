@@ -39,7 +39,7 @@ public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<Wireless
         float b = 0.0f;
         
         // 光束粗细
-        float thickness = 0.08f;
+        float thickness = 0.04f;
         
         // 对每个连接的目标渲染光束
         for (BlockPos targetPos : links) {
