@@ -126,6 +126,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
      * 3. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
      * 
      * 目标类型支持：
+     * - 其他无线能源感应塔（组成电网）
      * - GregTech CEu (IEnergyContainer) - 支持Long，4 FE = 1 EU
      * - Flux Networks设备
      * - Long能量接口设备
@@ -133,6 +134,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
      */
     private void pushEnergyToTarget(BlockEntity target) {
         if (level == null) return;
+
+        // 特殊处理：如果目标是另一个感应塔，直接传输能量（电网功能）
+        if (target instanceof WirelessEnergyTowerBlockEntity targetTower) {
+            pushEnergyToTower(targetTower);
+            return;
+        }
 
         // 优先尝试格雷科技
         boolean transferred = tryPushGTEnergy(target);
@@ -144,6 +151,110 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             // 回退到标准Forge Energy
             tryPushForgeEnergy(target);
         }
+    }
+    
+    /**
+     * 推送能量到另一个感应塔（电网功能）
+     * 直接从源的邻居提取能量，传递给目标的邻居
+     */
+    private void pushEnergyToTower(WirelessEnergyTowerBlockEntity targetTower) {
+        if (level == null) return;
+        
+        // 优先尝试从 AE2 网络提取能量
+        if (AE2FluxIntegration.isAvailable()) {
+            long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
+            if (extracted > 0) {
+                // 尝试将能量推送到目标塔的邻居
+                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                if (inserted > 0) {
+                    AE2FluxIntegration.extractEnergyFromOwnNetwork(this, inserted, false);
+                    return;
+                }
+            }
+        }
+        
+        // 从自己的邻居获取能量源
+        Object sourceFlux = getNeighborFluxEnergy();
+        if (sourceFlux != null) {
+            try {
+                Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
+                long extracted = (Long) extractMethod.invoke(sourceFlux, MAX_TRANSFER, true);
+                if (extracted > 0) {
+                    long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                    if (inserted > 0) {
+                        extractMethod.invoke(sourceFlux, inserted, false);
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        
+        ILongEnergyStorage sourceLong = getNeighborLongEnergy();
+        if (sourceLong != null) {
+            long extracted = sourceLong.extractEnergyL(MAX_TRANSFER, true);
+            if (extracted > 0) {
+                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                if (inserted > 0) {
+                    sourceLong.extractEnergyL(inserted, false);
+                    return;
+                }
+            }
+        }
+        
+        IEnergyStorage sourceEnergy = getNeighborForgeEnergy();
+        if (sourceEnergy != null) {
+            int extracted = sourceEnergy.extractEnergy(Integer.MAX_VALUE, true);
+            if (extracted > 0) {
+                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                if (inserted > 0) {
+                    sourceEnergy.extractEnergy((int) Math.min(inserted, Integer.MAX_VALUE), false);
+                }
+            }
+        }
+    }
+    
+    /**
+     * 将能量插入到邻居设备中
+     * 用于接收来自其他感应塔的能量
+     */
+    private long insertEnergyToNeighbors(long amount, boolean simulate) {
+        if (level == null || amount <= 0) return 0;
+        
+        // 尝试推送到所有邻居，返回实际插入的总量
+        long totalInserted = 0;
+        
+        for (Direction dir : Direction.values()) {
+            if (totalInserted >= amount) break;
+            
+            BlockPos neighborPos = worldPosition.relative(dir);
+            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
+            if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                long remaining = amount - totalInserted;
+                
+                // 尝试Long接口
+                LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                if (longCap.isPresent()) {
+                    ILongEnergyStorage storage = longCap.orElse(null);
+                    if (storage != null && storage.canReceive()) {
+                        long inserted = storage.receiveEnergyL(remaining, simulate);
+                        totalInserted += inserted;
+                        continue;
+                    }
+                }
+                
+                // 回退到标准接口
+                LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                if (normalCap.isPresent()) {
+                    IEnergyStorage storage = normalCap.orElse(null);
+                    if (storage != null && storage.canReceive()) {
+                        int inserted = storage.receiveEnergy((int) Math.min(remaining, Integer.MAX_VALUE), simulate);
+                        totalInserted += inserted;
+                    }
+                }
+            }
+        }
+        
+        return totalInserted;
     }
 
 

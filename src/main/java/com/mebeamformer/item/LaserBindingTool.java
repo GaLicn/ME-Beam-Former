@@ -95,19 +95,25 @@ public class LaserBindingTool extends Item {
         if (player != null && player.isShiftKeyDown()) {
             // Shift+右键：有两种情况
             // 1. 选择ILinkable作为源
-            // 2. 如果已有源且源是无线能源感应塔，则绑定目标
+            // 2. 如果已有源且源是无线能源感应塔，则绑定有能量能力的机器
             
             if (hasSource) {
                 // 已有源，检查源类型
                 String sourceType = tag.getString(TAG_SOURCE_TYPE);
                 if (TYPE_TOWER.equals(sourceType)) {
                     // 源是无线能源感应塔
-                    // 如果目标也是ILinkable（如全向光束成型器），优先重新选择它作为源
-                    if (isLinkable) {
-                        // 跳过绑定逻辑，直接到下面的"选择新源"逻辑
-                        // 不做任何处理，继续执行
+                    // Shift+右键只能绑定有能量能力的机器（非感应塔）
+                    boolean isTargetTower = be instanceof WirelessEnergyTowerBlockEntity;
+                    
+                    if (isTargetTower) {
+                        // 目标是感应塔，提示使用普通右键绑定
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_to_tower_needs_normal_click"), true);
+                        return InteractionResult.SUCCESS;
+                    } else if (isLinkable) {
+                        // 目标是其他ILinkable（如全向光束成型器），跳过绑定，重新选择源
+                        // 继续执行下面的选择新源逻辑
                     } else if (hasEnergy) {
-                        // 目标不是ILinkable但有能量能力，执行绑定逻辑
+                        // 目标有能量能力的机器，执行绑定逻辑
                         CompoundTag t = tag.getCompound(TAG_SOURCE);
                         BlockPos source = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
                         
@@ -144,7 +150,7 @@ public class LaserBindingTool extends Item {
                         return InteractionResult.PASS;
                     }
                 }
-                // 源是全向光束成型器，或源是能源塔但目标是ILinkable，继续选择新源的逻辑
+                // 源是全向光束成型器，或源是能源塔但目标是ILinkable（非感应塔），继续选择新源的逻辑
             }
             
             // 没有源，或源是全向光束成型器时，Shift+右键选择新源
@@ -172,7 +178,7 @@ public class LaserBindingTool extends Item {
             }
             return InteractionResult.CONSUME;
         } else {
-            // 普通右键：仅对全向光束成型器有效，无线能源感应塔需要Shift+右键
+            // 普通右键：可绑定全向光束成型器，或感应塔到感应塔
             if (!hasSource) {
                 // 没有选定源
                 if (isLinkable) {
@@ -190,11 +196,55 @@ public class LaserBindingTool extends Item {
             // 已选定源，检查源类型
             String sourceType = tag.getString(TAG_SOURCE_TYPE);
             if (TYPE_TOWER.equals(sourceType)) {
-                // 源是无线能源感应塔，提示需要Shift+右键绑定
-                if (player != null) {
-                    player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_needs_shift"), true);
+                // 源是无线能源感应塔，普通右键只能绑定其他感应塔
+                boolean isTargetTower = be instanceof WirelessEnergyTowerBlockEntity;
+                
+                if (!isTargetTower) {
+                    // 目标不是感应塔，提示使用Shift+右键绑定机器
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_needs_shift"), true);
+                    }
+                    return InteractionResult.SUCCESS;
                 }
-                return InteractionResult.SUCCESS;
+                
+                // 目标是感应塔，执行绑定逻辑
+                CompoundTag t = tag.getCompound(TAG_SOURCE);
+                BlockPos source = new BlockPos(t.getInt("x"), t.getInt("y"), t.getInt("z"));
+                
+                if (source.equals(pos)) {
+                    // 点击相同方块：提示不能连接自己
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.self_link"), true);
+                    }
+                    return InteractionResult.SUCCESS;
+                }
+                
+                BlockEntity beSource = level.getBlockEntity(source);
+                if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity) {
+                    // 检查是否已经连接
+                    if (sourceEntity.getLinks().contains(pos)) {
+                        // 已连接，断开连接
+                        sourceEntity.removeLink(pos);
+                        if (player != null) {
+                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_to_tower_unlinked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                        }
+                    } else {
+                        // 未连接，建立链接：从源到目标的单向连接
+                        sourceEntity.addLink(pos);
+                        if (player != null) {
+                            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_to_tower_linked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
+                        }
+                    }
+                    return InteractionResult.SUCCESS;
+                } else {
+                    // 源位置不再存在有效的感应塔
+                    tag.remove(TAG_SOURCE);
+                    tag.remove(TAG_SOURCE_TYPE);
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.invalid"), true);
+                    }
+                    return InteractionResult.SUCCESS;
+                }
             }
             
             // 源是全向光束成型器，执行普通右键绑定逻辑

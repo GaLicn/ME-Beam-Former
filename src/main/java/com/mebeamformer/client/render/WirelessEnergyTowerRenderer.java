@@ -7,6 +7,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<WirelessEnergyTowerBlockEntity> {
     
@@ -42,10 +43,19 @@ public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<Wireless
         
         // 对每个连接的目标渲染光束
         for (BlockPos targetPos : links) {
+            // 检查目标是否也是感应塔
+            BlockEntity targetBE = level.getBlockEntity(targetPos);
+            boolean isTargetTower = targetBE instanceof WirelessEnergyTowerBlockEntity;
+            
             // 目标方块中心位置
             float targetCenterX = targetPos.getX() + 0.5f;
             float targetCenterY = targetPos.getY() + 0.5f;
             float targetCenterZ = targetPos.getZ() + 0.5f;
+            
+            // 如果目标也是感应塔，使用塔顶中心+向上偏移
+            if (isTargetTower) {
+                targetCenterY = targetPos.getY() + 2.75f; // 底部 + 2格 + 0.5到中心 + 0.25偏移
+            }
             
             // 计算从塔顶中心到目标中心的向量
             float vx = targetCenterX - towerTopCenterX;
@@ -66,10 +76,15 @@ public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<Wireless
             float startOffsetY = normalizedVy * 0.25f;
             float startOffsetZ = normalizedVz * 0.25f;
             
-            // 重新计算光束向量（长度减少了0.25）
-            float adjustedVx = vx - startOffsetX;
-            float adjustedVy = vy - startOffsetY;
-            float adjustedVz = vz - startOffsetZ;
+            // 如果目标也是感应塔，终点也向起点方向缩进0.25个方块
+            float endOffsetX = isTargetTower ? (-normalizedVx * 0.25f) : 0f;
+            float endOffsetY = isTargetTower ? (-normalizedVy * 0.25f) : 0f;
+            float endOffsetZ = isTargetTower ? (-normalizedVz * 0.25f) : 0f;
+            
+            // 重新计算光束向量（起点缩进+终点缩进）
+            float adjustedVx = vx - startOffsetX - endOffsetX;
+            float adjustedVy = vy - startOffsetY - endOffsetY;
+            float adjustedVz = vz - startOffsetZ - endOffsetZ;
             
             // 保存状态
             poseStack.pushPose();
