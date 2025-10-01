@@ -145,13 +145,13 @@ dependencies {
     implementation fg.deobf("curse.maven:jei-238222:7014291")
     implementation fg.deobf("curse.maven:mekanism-268560:6552911")
     implementation fg.deobf("curse.maven:flux-networks-248020:5234697")
-    implementation fg.deobf("curse.maven:applied-flux-965012:6755986")
+   // implementation fg.deobf("curse.maven:applied-flux-965012:6755986")
     implementation fg.deobf("curse.maven:glodium-957920:5226922")
 
     //GREGTECH
-    implementation fg.deobf("curse.maven:configuration-444699:5840405")
-    implementation fg.deobf("curse.maven:ldlib-626676:6995785")
-    implementation fg.deobf("curse.maven:gregtechceu-modern-890405:7022042")
+    //implementation fg.deobf("curse.maven:configuration-444699:5840405")
+    //implementation fg.deobf("curse.maven:ldlib-626676:6995785")
+    //implementation fg.deobf("curse.maven:gregtechceu-modern-890405:7022042")
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 }

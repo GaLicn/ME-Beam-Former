@@ -1,8 +1,11 @@
 package com.mebeamformer.blockentity;
 
+import appeng.api.networking.GridFlags;
+import appeng.blockentity.grid.AENetworkBlockEntity;
 import com.mebeamformer.ME_Beam_Former;
 import com.mebeamformer.energy.ILongEnergyStorage;
 import com.mebeamformer.energy.MEBFCapabilities;
+import com.mebeamformer.integration.AE2FluxIntegration;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -21,7 +24,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.*;
 import java.lang.reflect.Method;
 
-public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILinkable {
+/**
+ * 无线能源感应塔
+ * 
+ * 功能：
+ * 1. 从邻居能量源提取能量，无线传输给绑定的目标机器
+ * 2. 继承 AENetworkBlockEntity，可以连接 AE2 线缆并接入 ME 网络
+ * 3. 如果安装了 appflux，可以直接从 ME 网络的 FE 存储提取能量
+ * 4. 支持多种能量接口：Flux Networks、GregTech CEu、Long Energy、Forge Energy
+ * 
+ * 能量优先级：
+ * - 输出到格雷机器时：ME 网络 (appflux) > Flux Networks > Long Energy > Forge Energy > 邻居能量源
+ */
+public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity implements ILinkable {
     // 持久化：绑定目标集合
     private final Set<BlockPos> links = new HashSet<>();
     // 最大传输速率: Long.MAX_VALUE
@@ -32,6 +47,13 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
 
     public WirelessEnergyTowerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.WIRELESS_ENERGY_TOWER_BE.get(), pos, state);
+        
+        // 配置 AE2 网络节点
+        // 如果安装了 appflux，则可以从 ME 网络提取 FE 能量
+        // 设置为不需要频道，空闲功率消耗为 0（能源塔不消耗网络能量）
+        this.getMainNode()
+            .setFlags(GridFlags.REQUIRE_CHANNEL)  // 需要频道才能连接
+            .setIdlePowerUsage(0.0);  // 不消耗 AE2 网络能量
     }
     
     @Override
@@ -78,13 +100,19 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
 
     /**
      * 主动推送能量到目标机器
-     * 从邻居能量源提取能量，然后推送给目标
+     * 从能量源提取能量，然后推送给目标
      * 
-     * 优先级顺序：
-     * 1. GregTech CEu (IEnergyContainer) - 支持Long，4 FE = 1 EU
-     * 2. Flux Networks (IFNEnergyStorage) - 支持Long.MAX_VALUE，自动兼容Mekanism等模组
-     * 3. Long能量接口 (ILongEnergyStorage) - 支持Long.MAX_VALUE
-     * 4. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
+     * 能量源优先级顺序：
+     * 0. AE2 Network (appflux) - 支持Long，从ME网络的FE存储提取 ✨
+     * 1. Flux Networks (IFNEnergyStorage) - 支持Long.MAX_VALUE，自动兼容Mekanism等模组
+     * 2. Long能量接口 (ILongEnergyStorage) - 支持Long.MAX_VALUE
+     * 3. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
+     * 
+     * 目标类型支持：
+     * - GregTech CEu (IEnergyContainer) - 支持Long，4 FE = 1 EU
+     * - Flux Networks设备
+     * - Long能量接口设备
+     * - 标准Forge Energy设备
      */
     private void pushEnergyToTarget(BlockEntity target) {
         if (level == null) return;
@@ -152,7 +180,15 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
             long amperage = (Long) getInputAmperageMethod.invoke(container);
             
             // 从邻居能量源获取能量（FE）
-            // 优先级：Flux Networks (long) > Long Energy (long) > Forge Energy (int)
+            // 优先级：AE2 Network (appflux) > Flux Networks (long) > Long Energy (long) > Forge Energy (int)
+            
+            // 0. 最优先：尝试从 AE2 网络提取能量（如果安装了 appflux）
+            if (AE2FluxIntegration.isAvailable()) {
+                long ae2Energy = tryExtractFromAE2Network(container, side, voltage, amperage, demand, acceptEnergyMethod);
+                if (ae2Energy > 0) {
+                    return true;
+                }
+            }
             
             // 1. 优先尝试 Flux Networks（支持 Long，无限制）
             Object sourceFlux = getNeighborFluxEnergy();
@@ -236,6 +272,52 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
             // 传输失败
         }
         return false;
+    }
+    
+    /**
+     * 尝试从 AE2 网络提取能量并推送到格雷科技
+     * 
+     * @return 实际传输的 EU 数量
+     */
+    private long tryExtractFromAE2Network(Object container, Direction side, 
+                                          long voltage, long amperage, long demand, Method acceptEnergyMethod) {
+        try {
+            // 计算可以传输的 EU 数量
+            long maxTransferEU = Math.min(voltage * amperage, demand);
+            long maxTransferFE = maxTransferEU << 2; // EU 转 FE (乘以4)
+            
+            // 从自己的 AE2 网络提取 FE（模拟）
+            long extractedFE = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, maxTransferFE, true);
+            if (extractedFE == 0) {
+                return 0;
+            }
+            
+            // FE 转换为 EU (4 FE = 1 EU)
+            long amountEU = extractedFE >> 2;
+            
+            // 计算实际传输的电压：取(机器电压, 可用EU, 需求)的最小值
+            long actualVoltage = Math.min(Math.min(voltage, amountEU), demand);
+            if (actualVoltage == 0) {
+                return 0;
+            }
+            
+            // 计算实际传输的电流：取(机器电流, 可用EU/电压)的最小值
+            long actualAmperage = Math.min(amperage, amountEU / actualVoltage);
+            
+            // 调用格雷科技的接收方法
+            long acceptedAmperage = (Long) acceptEnergyMethod.invoke(container, side, actualVoltage, actualAmperage);
+            long transferredEU = actualVoltage * acceptedAmperage;
+            
+            if (transferredEU > 0) {
+                // 从自己的 AE2 网络实际提取对应的 FE
+                long actualExtractFE = transferredEU << 2;
+                AE2FluxIntegration.extractEnergyFromOwnNetwork(this, actualExtractFE, false);
+                return transferredEU;
+            }
+        } catch (Exception e) {
+            // 传输失败
+        }
+        return 0;
     }
     
     /**
@@ -573,8 +655,8 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
+    public void loadTag(CompoundTag tag) {
+        super.loadTag(tag);
         this.links.clear();
         if (tag.contains("links", Tag.TAG_LIST)) {
             ListTag list = tag.getList("links", Tag.TAG_COMPOUND);
