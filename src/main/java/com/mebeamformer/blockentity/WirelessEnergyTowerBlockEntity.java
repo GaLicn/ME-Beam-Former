@@ -155,17 +155,21 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     
     /**
      * 推送能量到另一个感应塔（电网功能）
-     * 直接从源的邻居提取能量，传递给目标的邻居
+     * 直接从源的邻居提取能量，传递给目标塔及其整个电网
      */
     private void pushEnergyToTower(WirelessEnergyTowerBlockEntity targetTower) {
         if (level == null) return;
+        
+        // 创建访问追踪集合，防止循环
+        Set<BlockPos> visited = new HashSet<>();
+        visited.add(this.worldPosition); // 标记源塔已访问
         
         // 优先尝试从 AE2 网络提取能量
         if (AE2FluxIntegration.isAvailable()) {
             long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
             if (extracted > 0) {
-                // 尝试将能量推送到目标塔的邻居
-                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                // 尝试将能量推送到目标塔及其整个电网
+                long inserted = targetTower.distributeEnergyInNetwork(extracted, false, visited);
                 if (inserted > 0) {
                     AE2FluxIntegration.extractEnergyFromOwnNetwork(this, inserted, false);
                     return;
@@ -180,7 +184,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
                 long extracted = (Long) extractMethod.invoke(sourceFlux, MAX_TRANSFER, true);
                 if (extracted > 0) {
-                    long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                    long inserted = targetTower.distributeEnergyInNetwork(extracted, false, visited);
                     if (inserted > 0) {
                         extractMethod.invoke(sourceFlux, inserted, false);
                         return;
@@ -193,7 +197,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         if (sourceLong != null) {
             long extracted = sourceLong.extractEnergyL(MAX_TRANSFER, true);
             if (extracted > 0) {
-                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                long inserted = targetTower.distributeEnergyInNetwork(extracted, false, visited);
                 if (inserted > 0) {
                     sourceLong.extractEnergyL(inserted, false);
                     return;
@@ -205,7 +209,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         if (sourceEnergy != null) {
             int extracted = sourceEnergy.extractEnergy(Integer.MAX_VALUE, true);
             if (extracted > 0) {
-                long inserted = targetTower.insertEnergyToNeighbors(extracted, false);
+                long inserted = targetTower.distributeEnergyInNetwork(extracted, false, visited);
                 if (inserted > 0) {
                     sourceEnergy.extractEnergy((int) Math.min(inserted, Integer.MAX_VALUE), false);
                 }
@@ -214,15 +218,26 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 将能量插入到邻居设备中
-     * 用于接收来自其他感应塔的能量
+     * 在整个感应塔网络中分配能量
+     * 使用深度优先遍历，将能量分配给当前塔及其连接的所有设备和塔
+     * 
+     * @param amount 要分配的能量
+     * @param simulate 是否模拟
+     * @param visited 已访问的塔的位置集合（防止循环）
+     * @return 实际分配的能量
      */
-    private long insertEnergyToNeighbors(long amount, boolean simulate) {
+    private long distributeEnergyInNetwork(long amount, boolean simulate, Set<BlockPos> visited) {
         if (level == null || amount <= 0) return 0;
         
-        // 尝试推送到所有邻居，返回实际插入的总量
+        // 标记当前塔为已访问
+        if (!visited.add(this.worldPosition)) {
+            // 已经访问过，避免循环
+            return 0;
+        }
+        
         long totalInserted = 0;
         
+        // 1. 先分配给当前塔的邻居设备
         for (Direction dir : Direction.values()) {
             if (totalInserted >= amount) break;
             
@@ -254,7 +269,123 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             }
         }
         
+        // 2. 分配给当前塔连接的普通设备（非感应塔）
+        if (totalInserted < amount && !links.isEmpty()) {
+            for (BlockPos targetPos : new HashSet<>(links)) {
+                if (totalInserted >= amount) break;
+                
+                BlockEntity targetBE = level.getBlockEntity(targetPos);
+                if (targetBE == null) continue;
+                
+                // 只处理非感应塔设备
+                if (!(targetBE instanceof WirelessEnergyTowerBlockEntity)) {
+                    long remaining = amount - totalInserted;
+                    long inserted = pushEnergyToTargetDirect(targetBE, remaining, simulate);
+                    totalInserted += inserted;
+                }
+            }
+        }
+        
+        // 3. 将剩余能量递归分配给连接的其他感应塔
+        if (totalInserted < amount && !links.isEmpty()) {
+            for (BlockPos targetPos : new HashSet<>(links)) {
+                if (totalInserted >= amount) break;
+                
+                BlockEntity targetBE = level.getBlockEntity(targetPos);
+                if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                    // 检查是否已访问过
+                    if (!visited.contains(targetPos)) {
+                        long remaining = amount - totalInserted;
+                        // 递归分配能量到下一个塔及其网络
+                        long inserted = targetTower.distributeEnergyInNetwork(remaining, simulate, visited);
+                        totalInserted += inserted;
+                    }
+                }
+            }
+        }
+        
         return totalInserted;
+    }
+    
+    /**
+     * 直接推送能量到目标设备（用于能量分配）
+     * 返回实际插入的能量
+     */
+    private long pushEnergyToTargetDirect(BlockEntity target, long amount, boolean simulate) {
+        if (level == null || amount <= 0) return 0;
+        
+        // 尝试格雷科技
+        long inserted = tryPushGTEnergyDirect(target, amount, simulate);
+        if (inserted > 0) return inserted;
+        
+        // 尝试Long能量接口
+        for (Direction dir : Direction.values()) {
+            LazyOptional<ILongEnergyStorage> longCap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
+            if (longCap.isPresent()) {
+                ILongEnergyStorage storage = longCap.orElse(null);
+                if (storage != null && storage.canReceive()) {
+                    return storage.receiveEnergyL(amount, simulate);
+                }
+            }
+        }
+        
+        // 回退到标准Forge Energy
+        for (Direction dir : Direction.values()) {
+            LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
+            if (cap.isPresent()) {
+                IEnergyStorage storage = cap.orElse(null);
+                if (storage != null && storage.canReceive()) {
+                    return storage.receiveEnergy((int) Math.min(amount, Integer.MAX_VALUE), simulate);
+                }
+            }
+        }
+        
+        return 0;
+    }
+    
+    /**
+     * 直接推送能量到格雷科技设备（用于能量分配）
+     */
+    private long tryPushGTEnergyDirect(BlockEntity target, long amountFE, boolean simulate) {
+        try {
+            Class<?> gtCapClass = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
+            java.lang.reflect.Field field = gtCapClass.getField("CAPABILITY_ENERGY_CONTAINER");
+            Capability<?> gtCap = (Capability<?>) field.get(null);
+            
+            for (Direction dir : Direction.values()) {
+                LazyOptional<?> cap = target.getCapability(gtCap, dir);
+                if (cap.isPresent()) {
+                    Object container = cap.orElse(null);
+                    if (container != null) {
+                        Method inputsEnergyMethod = container.getClass().getMethod("inputsEnergy", Direction.class);
+                        if ((Boolean) inputsEnergyMethod.invoke(container, dir)) {
+                            // FE 转换为 EU (4 FE = 1 EU)
+                            long amountEU = amountFE >> 2;
+                            
+                            Method getInputVoltageMethod = container.getClass().getMethod("getInputVoltage");
+                            Method getInputAmperageMethod = container.getClass().getMethod("getInputAmperage");
+                            
+                            long voltage = (Long) getInputVoltageMethod.invoke(container);
+                            long amperage = (Long) getInputAmperageMethod.invoke(container);
+                            
+                            long actualVoltage = Math.min(voltage, amountEU);
+                            long actualAmperage = Math.min(amperage, amountEU / Math.max(actualVoltage, 1));
+                            
+                            if (!simulate) {
+                                Method acceptEnergyMethod = container.getClass().getMethod("acceptEnergyFromNetwork", Direction.class, long.class, long.class);
+                                long acceptedAmperage = (Long) acceptEnergyMethod.invoke(container, dir, actualVoltage, actualAmperage);
+                                long transferredEU = actualVoltage * acceptedAmperage;
+                                return transferredEU << 2; // EU 转回 FE
+                            } else {
+                                return (actualVoltage * actualAmperage) << 2;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
     }
 
 
