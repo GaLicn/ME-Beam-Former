@@ -141,6 +141,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             return;
         }
 
+        // 优先尝试从 AE2 网络提取能量并推送
+        if (AE2FluxIntegration.isAvailable()) {
+            boolean transferred = tryPushFromAE2Network(target);
+            if (transferred) return;
+        }
+
         // 优先尝试格雷科技
         boolean transferred = tryPushGTEnergy(target);
         if (transferred) return;
@@ -151,6 +157,25 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             // 回退到标准Forge Energy
             tryPushForgeEnergy(target);
         }
+    }
+    
+    /**
+     * 尝试从AE2网络提取能量并推送到目标设备
+     */
+    private boolean tryPushFromAE2Network(BlockEntity target) {
+        // 尝试从AE2网络提取能量（模拟）
+        long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
+        if (extracted <= 0) return false;
+        
+        // 尝试推送到目标（实际）
+        long inserted = pushEnergyToTargetDirect(target, extracted, false);
+        if (inserted > 0) {
+            // 从AE2网络实际提取对应的能量
+            AE2FluxIntegration.extractEnergyFromOwnNetwork(this, inserted, false);
+            return true;
+        }
+        
+        return false;
     }
     
     /**
