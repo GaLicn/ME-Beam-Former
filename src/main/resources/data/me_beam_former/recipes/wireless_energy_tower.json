@@ -1,13 +1,16 @@
 {
   "type": "minecraft:crafting_shaped",
   "pattern": [
-    "EEE",
-    "ETE",
-    "EEE"
+    " Q ",
+    "ATA",
+    "BEB"
   ],
   "key": {
-    "E": { "tag": "forge:ingots/iron" },
-    "T": { "item": "me_beam_former:omni_beam_former_block" }
+    "A": { "item": "minecraft:gold_ingot" },
+    "B": { "item": "minecraft:iron_ingot" },
+    "E": { "item": "minecraft:iron_block" },
+    "T": { "item": "minecraft:redstone_block" },
+    "Q": { "item": "minecraft:ender_eye" }
   },
   "result": { "item": "me_beam_former:wireless_energy_tower", "count": 1 }
 } 

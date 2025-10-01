@@ -104,9 +104,9 @@ public class ME_Beam_Former {
             () -> new WirelessEnergyTowerBlock(BlockBehaviour.Properties
                     .of()
                     .mapColor(MapColor.METAL)
-                    .strength(3.5f)
+                    .strength(1.5f)  // 与石头一致的硬度
                     .sound(SoundType.METAL)
-                    .requiresCorrectToolForDrops()
+                    .requiresCorrectToolForDrops()  // 需要镐子才能掉落
                     .noOcclusion()
             ));
     public static final RegistryObject<Item> WIRELESS_ENERGY_TOWER_ITEM = ITEMS.register("wireless_energy_tower",

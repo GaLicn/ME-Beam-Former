@@ -263,6 +263,19 @@ public class LaserBindingTool extends Item {
                     return InteractionResult.SUCCESS;
                 }
                 
+                // 检查距离限制：水平范围16x16，垂直范围256
+                int dx = Math.abs(pos.getX() - source.getX());
+                int dy = Math.abs(pos.getY() - source.getY());
+                int dz = Math.abs(pos.getZ() - source.getZ());
+                
+                if (dx > 16 || dz > 16 || dy > 256) {
+                    // 超出连接范围
+                    if (player != null) {
+                        player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_out_of_range"), true);
+                    }
+                    return InteractionResult.SUCCESS;
+                }
+                
                 // 获取感应塔的BlockEntity（源和目标都可能保存的是底部位置）
                 WirelessEnergyTowerBlockEntity sourceEntity = getTowerBlockEntity(level, source);
                 WirelessEnergyTowerBlockEntity targetEntity = getTowerBlockEntity(level, pos);
