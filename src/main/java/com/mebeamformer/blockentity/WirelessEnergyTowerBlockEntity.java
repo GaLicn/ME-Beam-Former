@@ -11,9 +11,13 @@ import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.api.distmarker.OnlyIn;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.common.util.LazyOptional;
@@ -39,6 +43,10 @@ import java.lang.reflect.Method;
 public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity implements ILinkable {
     // 持久化：绑定目标集合
     private final Set<BlockPos> links = new HashSet<>();
+    // 客户端渲染缓存：当前连接的目标列表（服务端同步）
+    private List<BlockPos> clientLinks = Collections.emptyList();
+    // 上一次服务端可见集合，用于决定是否 markForUpdate()
+    private final Set<BlockPos> lastSyncedLinks = new HashSet<>();
     // 最大传输速率: Long.MAX_VALUE
     private static final long MAX_TRANSFER = Long.MAX_VALUE;
     
@@ -81,6 +89,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         if (be.isRemoved()) return;
 
         // 主动推送能量到所有连接的机器
+        Set<BlockPos> validLinks = new HashSet<>();
         for (BlockPos targetPos : new HashSet<>(be.links)) {
             BlockEntity targetBE = level.getBlockEntity(targetPos);
             if (targetBE == null) {
@@ -91,6 +100,14 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
 
             // 主动推送能量到目标
             be.pushEnergyToTarget(targetBE);
+            validLinks.add(targetPos);
+        }
+        
+        // 检查连接是否变化，如果变化则同步到客户端
+        if (!validLinks.equals(be.lastSyncedLinks)) {
+            be.lastSyncedLinks.clear();
+            be.lastSyncedLinks.addAll(validLinks);
+            be.markForUpdate();
         }
     }
 
@@ -639,6 +656,36 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     public Set<BlockPos> getLinks() {
         return Collections.unmodifiableSet(links);
     }
+    
+    /**
+     * 获取客户端连接列表（用于渲染）
+     */
+    public List<BlockPos> getClientLinks() {
+        return clientLinks;
+    }
+    
+    @Override
+    protected void writeToStream(FriendlyByteBuf data) {
+        super.writeToStream(data);
+        // 同步当前连接目标集合
+        data.writeVarInt(this.lastSyncedLinks.size());
+        for (BlockPos p : this.lastSyncedLinks) {
+            data.writeBlockPos(p);
+        }
+    }
+
+    @Override
+    protected boolean readFromStream(FriendlyByteBuf data) {
+        boolean changed = super.readFromStream(data);
+        int n = data.readVarInt();
+        List<BlockPos> list = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            list.add(data.readBlockPos());
+        }
+        boolean linksChanged = !list.equals(this.clientLinks);
+        this.clientLinks = list;
+        return changed || linksChanged;
+    }
 
     @Override
     public void saveAdditional(CompoundTag tag) {
@@ -1061,5 +1108,42 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             }
             return 0;
         }
+    }
+    
+    /**
+     * 扩展渲染边界框，确保远距离光束能够正常渲染
+     */
+    @OnlyIn(Dist.CLIENT)
+    @Override
+    public AABB getRenderBoundingBox() {
+        // 如果没有连接目标，使用默认边界框
+        if (clientLinks == null || clientLinks.isEmpty()) {
+            BlockPos pos = getBlockPos();
+            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
+                           pos.getX() + 6, pos.getY() + 8, pos.getZ() + 6); // Y轴考虑塔的高度
+        }
+
+        BlockPos pos = getBlockPos();
+        // 计算包含所有目标的边界框（从塔顶开始）
+        double minX = pos.getX();
+        double minY = pos.getY();
+        double minZ = pos.getZ();
+        double maxX = pos.getX() + 1;
+        double maxY = pos.getY() + 3; // 塔高3格
+        double maxZ = pos.getZ() + 1;
+
+        for (BlockPos target : clientLinks) {
+            minX = Math.min(minX, target.getX());
+            minY = Math.min(minY, target.getY());
+            minZ = Math.min(minZ, target.getZ());
+            maxX = Math.max(maxX, target.getX() + 1);
+            maxY = Math.max(maxY, target.getY() + 1);
+            maxZ = Math.max(maxZ, target.getZ() + 1);
+        }
+
+        // 扩大边界框，确保光束在各个角度都能正常渲染
+        double expansion = 5.0;
+        return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
+                       maxX + expansion, maxY + expansion, maxZ + expansion);
     }
 } 

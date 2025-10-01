@@ -41,6 +41,7 @@ import com.mebeamformer.client.render.OmniBeamFormerBER;
 import com.mebeamformer.item.LaserBindingTool;
 import com.mebeamformer.block.WirelessEnergyTowerBlock;
 import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
+import com.mebeamformer.client.render.WirelessEnergyTowerRenderer;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -190,6 +191,7 @@ public class ME_Beam_Former {
             event.enqueueWork(() -> {
                 BlockEntityRenderers.register(BEAM_FORMER_BE.get(), ctx -> new BeamFormerBER(ctx));
                 BlockEntityRenderers.register(OMNI_BEAM_FORMER_BE.get(), ctx -> new OmniBeamFormerBER(ctx));
+                BlockEntityRenderers.register(WIRELESS_ENERGY_TOWER_BE.get(), ctx -> new WirelessEnergyTowerRenderer(ctx));
                 // 非完整方块模型：使用 cutout 渲染层，匹配模型中的 render_type: "cutout"
                 net.minecraft.client.renderer.ItemBlockRenderTypes.setRenderLayer(
                         BEAM_FORMER_BLOCK.get(),
