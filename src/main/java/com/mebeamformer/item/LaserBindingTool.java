@@ -3,6 +3,7 @@ package com.mebeamformer.item;
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
 import com.mebeamformer.blockentity.ILinkable;
+import com.mebeamformer.block.WirelessEnergyTowerBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -15,6 +16,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.energy.IEnergyStorage;
 
@@ -26,6 +28,41 @@ public class LaserBindingTool extends Item {
 
     public LaserBindingTool(Properties props) {
         super(props);
+    }
+    
+    /**
+     * 获取感应塔底部的位置
+     * 如果点击的是感应塔的任意部分，返回底部方块的位置
+     * 
+     * @param level 世界
+     * @param pos 点击的位置
+     * @return 底部位置，如果不是感应塔则返回原位置
+     */
+    private BlockPos getTowerBasePos(Level level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof WirelessEnergyTowerBlock) {
+            int part = state.getValue(WirelessEnergyTowerBlock.PART);
+            // 根据part值计算底部位置
+            // 0=底部，1=中部，2=顶部
+            return pos.below(part);
+        }
+        return pos;
+    }
+    
+    /**
+     * 获取感应塔的BlockEntity（总是从底部获取）
+     * 
+     * @param level 世界
+     * @param pos 点击的位置（可能是塔的任意部分）
+     * @return BlockEntity，如果不是感应塔或底部不存在则返回null
+     */
+    private WirelessEnergyTowerBlockEntity getTowerBlockEntity(Level level, BlockPos pos) {
+        BlockPos basePos = getTowerBasePos(level, pos);
+        BlockEntity be = level.getBlockEntity(basePos);
+        if (be instanceof WirelessEnergyTowerBlockEntity tower) {
+            return tower;
+        }
+        return null;
     }
 
     /**
@@ -82,10 +119,17 @@ public class LaserBindingTool extends Item {
         Level level = ctx.getLevel();
         if (level.isClientSide) return InteractionResult.SUCCESS;
 
-        BlockPos pos = ctx.getClickedPos();
-        BlockEntity be = level.getBlockEntity(pos);
+        BlockPos clickedPos = ctx.getClickedPos();
         ItemStack stack = ctx.getItemInHand();
         Player player = ctx.getPlayer();
+
+        // 如果点击的是感应塔，获取底部位置和BlockEntity
+        BlockPos pos = getTowerBasePos(level, clickedPos);
+        BlockEntity be = level.getBlockEntity(pos);
+        
+        // 检查是否是感应塔（任意部分）
+        BlockState clickedState = level.getBlockState(clickedPos);
+        boolean isClickedTower = clickedState.getBlock() instanceof WirelessEnergyTowerBlock;
 
         CompoundTag tag = stack.getOrCreateTag();
         boolean hasSource = tag.contains(TAG_SOURCE);
@@ -103,7 +147,7 @@ public class LaserBindingTool extends Item {
                 if (TYPE_TOWER.equals(sourceType)) {
                     // 源是无线能源感应塔
                     // Shift+右键只能绑定有能量能力的机器（非感应塔）
-                    boolean isTargetTower = be instanceof WirelessEnergyTowerBlockEntity;
+                    boolean isTargetTower = isClickedTower;
                     
                     if (isTargetTower) {
                         // 目标是感应塔，提示使用普通右键绑定
@@ -123,8 +167,8 @@ public class LaserBindingTool extends Item {
                             return InteractionResult.SUCCESS;
                         }
                         
-                        BlockEntity beSource = level.getBlockEntity(source);
-                        if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity) {
+                        WirelessEnergyTowerBlockEntity sourceEntity = getTowerBlockEntity(level, source);
+                        if (sourceEntity != null) {
                             // 无线能源感应塔没有距离限制
                             
                             // 检查是否已经连接
@@ -166,7 +210,7 @@ public class LaserBindingTool extends Item {
             tag.put(TAG_SOURCE, t);
             
             // 记录源类型并显示对应提示
-            if (be instanceof WirelessEnergyTowerBlockEntity) {
+            if (isClickedTower) {
                 tag.putString(TAG_SOURCE_TYPE, TYPE_TOWER);
                 player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.set_tower", pos.getX(), pos.getY(), pos.getZ()), true);
             } else if (be instanceof OmniBeamFormerBlockEntity) {
@@ -197,7 +241,7 @@ public class LaserBindingTool extends Item {
             String sourceType = tag.getString(TAG_SOURCE_TYPE);
             if (TYPE_TOWER.equals(sourceType)) {
                 // 源是无线能源感应塔，普通右键只能绑定其他感应塔
-                boolean isTargetTower = be instanceof WirelessEnergyTowerBlockEntity;
+                boolean isTargetTower = isClickedTower;
                 
                 if (!isTargetTower) {
                     // 目标不是感应塔，提示使用Shift+右键绑定机器
@@ -219,11 +263,11 @@ public class LaserBindingTool extends Item {
                     return InteractionResult.SUCCESS;
                 }
                 
-                BlockEntity beSource = level.getBlockEntity(source);
-                BlockEntity beTarget = level.getBlockEntity(pos);
+                // 获取感应塔的BlockEntity（源和目标都可能保存的是底部位置）
+                WirelessEnergyTowerBlockEntity sourceEntity = getTowerBlockEntity(level, source);
+                WirelessEnergyTowerBlockEntity targetEntity = getTowerBlockEntity(level, pos);
                 
-                if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity && 
-                    beTarget instanceof WirelessEnergyTowerBlockEntity targetEntity) {
+                if (sourceEntity != null && targetEntity != null) {
                     
                     // 检查是否已经连接（检查双向）
                     boolean isLinked = sourceEntity.getLinks().contains(pos);
