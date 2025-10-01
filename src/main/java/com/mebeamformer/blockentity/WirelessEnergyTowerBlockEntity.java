@@ -32,13 +32,19 @@ import java.lang.reflect.Method;
  * 无线能源感应塔
  * 
  * 功能：
- * 1. 从邻居能量源提取能量，无线传输给绑定的目标机器
- * 2. 继承 AENetworkBlockEntity，可以连接 AE2 线缆并接入 ME 网络
- * 3. 如果安装了 appflux，可以直接从 ME 网络的 FE 存储提取能量
- * 4. 支持多种能量接口：Flux Networks、GregTech CEu、Long Energy、Forge Energy
+ * 1. 【主动模式】从邻居能量源提取能量，无线传输给绑定的目标机器
+ * 2. 【被动模式】接收外部推送的能量（如Flux Point），立即转发给绑定的目标机器
+ * 3. 继承 AENetworkBlockEntity，可以连接 AE2 线缆并接入 ME 网络
+ * 4. 如果安装了 appflux，可以直接从 ME 网络的 FE 存储提取能量
+ * 5. 支持多种能量接口：Flux Networks、GregTech CEu、Long Energy、Forge Energy
  * 
- * 能量优先级：
- * - 输出到格雷机器时：ME 网络 (appflux) > Flux Networks > Long Energy > Forge Energy > 邻居能量源
+ * 能量传输模式：
+ * - 主动提取：ME 网络 (appflux) > Flux Networks > Long Energy > Forge Energy > 邻居能量源
+ * - 被动接收：直接转发给绑定目标，无缓存穿透
+ * 
+ * 设计特点：
+ * - 无内部能量缓存，所有能量实时透传
+ * - 支持塔到塔的电网连接和递归转发
  */
 public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity implements ILinkable {
     // 持久化：绑定目标集合
@@ -240,6 +246,73 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 }
             }
         }
+    }
+    
+    /**
+     * 接收来自其他感应塔转发的能量（被动接收模式）
+     * 用于塔到塔的递归转发，防止循环
+     * 
+     * @param amount 要接收的能量
+     * @param simulate 是否模拟
+     * @param visited 已访问的塔的位置集合（防止循环）
+     * @return 实际接收并转发的能量
+     */
+    private long receiveEnergyFromTower(long amount, boolean simulate, Set<BlockPos> visited) {
+        if (level == null || amount <= 0) return 0;
+        
+        // 标记当前塔为已访问，防止循环
+        if (!visited.add(this.worldPosition)) {
+            return 0; // 已经访问过，避免循环
+        }
+        
+        long totalInserted = 0;
+        
+        // 分配给当前塔的邻居设备（不是感应塔的设备）
+        for (Direction dir : Direction.values()) {
+            if (totalInserted >= amount) break;
+            
+            BlockPos neighborPos = worldPosition.relative(dir);
+            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
+            if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                long remaining = amount - totalInserted;
+                long inserted = pushEnergyToTargetDirect(neighborBE, remaining, simulate);
+                totalInserted += inserted;
+            }
+        }
+        
+        // 分配给当前塔绑定的普通设备（非感应塔）
+        if (totalInserted < amount && !links.isEmpty()) {
+            for (BlockPos targetPos : new HashSet<>(links)) {
+                if (totalInserted >= amount) break;
+                
+                BlockEntity targetBE = level.getBlockEntity(targetPos);
+                if (targetBE == null) continue;
+                
+                if (!(targetBE instanceof WirelessEnergyTowerBlockEntity)) {
+                    long remaining = amount - totalInserted;
+                    long inserted = pushEnergyToTargetDirect(targetBE, remaining, simulate);
+                    totalInserted += inserted;
+                }
+            }
+        }
+        
+        // 将剩余能量递归分配给连接的其他感应塔
+        if (totalInserted < amount && !links.isEmpty()) {
+            for (BlockPos targetPos : new HashSet<>(links)) {
+                if (totalInserted >= amount) break;
+                
+                BlockEntity targetBE = level.getBlockEntity(targetPos);
+                if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                    if (!visited.contains(targetPos)) {
+                        long remaining = amount - totalInserted;
+                        long inserted = targetTower.receiveEnergyFromTower(remaining, simulate, visited);
+                        totalInserted += inserted;
+                    }
+                }
+            }
+        }
+        
+        return totalInserted;
     }
     
     /**
@@ -1182,18 +1255,119 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             case "extractEnergyL":
                 return handleExtractEnergyL(args);
             case "receiveEnergyL":
-                return 0L; // 感应塔主要用于输出
+                return handleReceiveEnergyL(args); // 被动接收模式：接收并立即转发
             case "getEnergyStoredL":
-                return getNeighborEnergyStoredL();
+                return getFluxEnergyStoredL();
             case "getMaxEnergyStoredL":
-                return getNeighborMaxEnergyStoredL();
+                return getFluxMaxEnergyStoredL();
             case "canExtract":
                 return canNeighborExtract();
             case "canReceive":
-                return false; // 感应塔主要用于输出
+                return canReceiveFromFlux(); // 如果有目标就可以接收
             default:
                 return null;
         }
+    }
+    
+    /**
+     * 接收能量并立即转发（Flux Networks long版本，被动接收模式）
+     */
+    private long handleReceiveEnergyL(Object[] args) {
+        if (args == null || args.length < 2) return 0L;
+        long maxReceive = (Long) args[0];
+        boolean simulate = (Boolean) args[1];
+        
+        if (maxReceive <= 0 || level == null || links.isEmpty()) return 0L;
+        
+        long totalInserted = 0;
+        
+        // 将能量分配给所有绑定的目标
+        for (BlockPos targetPos : new HashSet<>(links)) {
+            if (totalInserted >= maxReceive) break;
+            
+            BlockEntity targetBE = level.getBlockEntity(targetPos);
+            if (targetBE == null) continue;
+            
+            long remaining = maxReceive - totalInserted;
+            
+            // 特殊处理：如果目标是另一个感应塔
+            if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                Set<BlockPos> visited = new HashSet<>();
+                visited.add(worldPosition);
+                long inserted = targetTower.receiveEnergyFromTower(remaining, simulate, visited);
+                totalInserted += inserted;
+            } else {
+                // 直接推送给普通设备
+                long inserted = pushEnergyToTargetDirect(targetBE, remaining, simulate);
+                totalInserted += inserted;
+            }
+        }
+        
+        return totalInserted;
+    }
+    
+    /**
+     * 判断是否可以从Flux Networks接收能量
+     */
+    private boolean canReceiveFromFlux() {
+        return level != null && !links.isEmpty();
+    }
+    
+    /**
+     * 获取能量存储量（Flux Networks接口）
+     * 返回0，因为感应塔不存储能量
+     */
+    private long getFluxEnergyStoredL() {
+        return 0L; // 无缓存设计，不存储能量
+    }
+    
+    /**
+     * 获取最大能量存储量（Flux Networks接口）
+     * 返回目标设备的总容量作为参考
+     */
+    private long getFluxMaxEnergyStoredL() {
+        if (level == null || links.isEmpty()) return 0L;
+        
+        long totalCapacity = 0;
+        for (BlockPos targetPos : new HashSet<>(links)) {
+            BlockEntity targetBE = level.getBlockEntity(targetPos);
+            if (targetBE == null) continue;
+            
+            // 尝试获取目标的最大容量
+            for (Direction dir : Direction.values()) {
+                try {
+                    // 优先尝试Flux Networks接口
+                    long fluxMax = tryGetFluxMaxEnergyStored(targetBE, dir);
+                    if (fluxMax > 0) {
+                        totalCapacity += fluxMax;
+                        break;
+                    }
+                    
+                    // 尝试Long接口
+                    LazyOptional<ILongEnergyStorage> longCap = targetBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
+                    if (longCap.isPresent()) {
+                        ILongEnergyStorage storage = longCap.resolve().orElse(null);
+                        if (storage != null) {
+                            totalCapacity += storage.getMaxEnergyStoredL();
+                            break;
+                        }
+                    }
+                    
+                    // 回退到标准接口
+                    LazyOptional<IEnergyStorage> normalCap = targetBE.getCapability(ForgeCapabilities.ENERGY, dir);
+                    if (normalCap.isPresent()) {
+                        IEnergyStorage storage = normalCap.resolve().orElse(null);
+                        if (storage != null) {
+                            totalCapacity += storage.getMaxEnergyStored();
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        
+        return Math.max(totalCapacity, Long.MAX_VALUE / 2); // 返回目标总容量，至少返回一个大值
     }
     
     /**
@@ -1420,13 +1594,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         
         @Override
         public int receiveEnergy(int maxReceive, boolean simulate) {
-            Object storage = getNeighborStorage();
-            if (storage instanceof ILongEnergyStorage longStorage) {
-                return (int) Math.min(longStorage.receiveEnergyL(maxReceive, simulate), Integer.MAX_VALUE);
-            } else if (storage instanceof IEnergyStorage normalStorage) {
-                return normalStorage.receiveEnergy(maxReceive, simulate);
-            }
-            return 0;
+            // 被动接收模式：从外部（如Flux Point）接收能量，立即转发给目标
+            return (int) Math.min(receiveEnergyL(maxReceive, simulate), Integer.MAX_VALUE);
         }
         
         @Override
@@ -1463,11 +1632,9 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         
         @Override
         public boolean canReceive() {
-            Object storage = getNeighborStorage();
-            if (storage instanceof ILongEnergyStorage longStorage) {
-                return longStorage.canReceive();
-            } else if (storage instanceof IEnergyStorage normalStorage) {
-                return normalStorage.canReceive();
+            // 如果有绑定的目标，就可以接收能量（被动接收模式）
+            if (level != null && !links.isEmpty()) {
+                return true;
             }
             return false;
         }
@@ -1476,13 +1643,37 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         
         @Override
         public long receiveEnergyL(long maxReceive, boolean simulate) {
-            Object storage = getNeighborStorage();
-            if (storage instanceof ILongEnergyStorage longStorage) {
-                return longStorage.receiveEnergyL(maxReceive, simulate);
-            } else if (storage instanceof IEnergyStorage normalStorage) {
-                return normalStorage.receiveEnergy((int) Math.min(maxReceive, Integer.MAX_VALUE), simulate);
+            // 被动接收模式：从外部（如Flux Point）接收能量，立即转发给绑定的目标
+            if (level == null || maxReceive <= 0 || links.isEmpty()) {
+                return 0;
             }
-            return 0;
+            
+            long totalInserted = 0;
+            
+            // 遍历所有绑定的目标，将能量分配出去
+            for (BlockPos targetPos : new HashSet<>(links)) {
+                if (totalInserted >= maxReceive) break;
+                
+                BlockEntity targetBE = level.getBlockEntity(targetPos);
+                if (targetBE == null) continue;
+                
+                long remaining = maxReceive - totalInserted;
+                
+                // 特殊处理：如果目标是另一个感应塔，递归转发
+                if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                    // 递归转发给目标塔的绑定设备
+                    Set<BlockPos> visited = new HashSet<>();
+                    visited.add(worldPosition); // 防止循环
+                    long inserted = targetTower.receiveEnergyFromTower(remaining, simulate, visited);
+                    totalInserted += inserted;
+                } else {
+                    // 直接推送给普通设备
+                    long inserted = pushEnergyToTargetDirect(targetBE, remaining, simulate);
+                    totalInserted += inserted;
+                }
+            }
+            
+            return totalInserted; // 返回实际转发的能量
         }
         
         @Override
