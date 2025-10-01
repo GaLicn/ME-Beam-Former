@@ -30,14 +30,50 @@ public class LaserBindingTool extends Item {
 
     /**
      * 检查方块实体是否有能量存储能力
+     * 支持：Forge Energy、GregTech CEu、Flux Networks
      */
     private boolean hasEnergyCapability(BlockEntity be) {
         if (be == null) return false;
+        
+        // 检查标准 Forge Energy
         for (Direction dir : Direction.values()) {
             if (be.getCapability(ForgeCapabilities.ENERGY, dir).isPresent()) {
                 return true;
             }
         }
+        
+        // 检查 GregTech CEu 能量容器
+        try {
+            Class<?> gtCapClass = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
+            java.lang.reflect.Field field = gtCapClass.getField("CAPABILITY_ENERGY_CONTAINER");
+            net.minecraftforge.common.capabilities.Capability<?> gtCap = 
+                (net.minecraftforge.common.capabilities.Capability<?>) field.get(null);
+            
+            for (Direction dir : Direction.values()) {
+                if (be.getCapability(gtCap, dir).isPresent()) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // GregTech CEu 未安装或不兼容
+        }
+        
+        // 检查 Flux Networks 能量接口
+        try {
+            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
+            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
+            net.minecraftforge.common.capabilities.Capability<?> fluxCap = 
+                (net.minecraftforge.common.capabilities.Capability<?>) field.get(null);
+            
+            for (Direction dir : Direction.values()) {
+                if (be.getCapability(fluxCap, dir).isPresent()) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            // Flux Networks 未安装或不兼容
+        }
+        
         return false;
     }
 

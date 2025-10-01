@@ -81,21 +81,201 @@ public class WirelessEnergyTowerBlockEntity extends BlockEntity implements ILink
      * 从邻居能量源提取能量，然后推送给目标
      * 
      * 优先级顺序：
-     * 1. Flux Networks (IFNEnergyStorage) - 支持Long.MAX_VALUE，自动兼容Mekanism等模组
-     * 2. Long能量接口 (ILongEnergyStorage) - 支持Long.MAX_VALUE
-     * 3. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
+     * 1. GregTech CEu (IEnergyContainer) - 支持Long，4 FE = 1 EU
+     * 2. Flux Networks (IFNEnergyStorage) - 支持Long.MAX_VALUE，自动兼容Mekanism等模组
+     * 3. Long能量接口 (ILongEnergyStorage) - 支持Long.MAX_VALUE
+     * 4. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
      */
     private void pushEnergyToTarget(BlockEntity target) {
         if (level == null) return;
 
+        // 优先尝试格雷科技
+        boolean transferred = tryPushGTEnergy(target);
+        if (transferred) return;
+
         // 尝试使用Long能量接口推送（包括Flux Networks会在getCapability中处理）
-        boolean transferred = tryPushLongEnergy(target);
+        transferred = tryPushLongEnergy(target);
         if (!transferred) {
             // 回退到标准Forge Energy
             tryPushForgeEnergy(target);
         }
     }
 
+
+    /**
+     * 尝试推送能量到GregTech CEu机器
+     * 能量转换：4 FE = 1 EU
+     */
+    private boolean tryPushGTEnergy(BlockEntity target) {
+        try {
+            // 获取格雷科技的能力
+            Class<?> gtCapClass = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
+            java.lang.reflect.Field field = gtCapClass.getField("CAPABILITY_ENERGY_CONTAINER");
+            Capability<?> gtCap = (Capability<?>) field.get(null);
+            
+            // 检查目标是否有格雷能力
+            for (Direction dir : Direction.values()) {
+                LazyOptional<?> cap = target.getCapability(gtCap, dir);
+                if (cap.isPresent()) {
+                    Object container = cap.orElse(null);
+                    if (container != null) {
+                        // 检查是否可以输入能量
+                        Method inputsEnergyMethod = container.getClass().getMethod("inputsEnergy", Direction.class);
+                        if ((Boolean) inputsEnergyMethod.invoke(container, dir)) {
+                            return pushToGTContainer(container, dir);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // 格雷科技未安装或版本不兼容
+        }
+        return false;
+    }
+    
+    /**
+     * 推送能量到格雷科技能量容器
+     * 处理电压、电流和FE-EU转换
+     */
+    private boolean pushToGTContainer(Object container, Direction side) {
+        try {
+            // 获取容器信息
+            Method getEnergyCanBeInsertedMethod = container.getClass().getMethod("getEnergyCanBeInserted");
+            long demand = (Long) getEnergyCanBeInsertedMethod.invoke(container);
+            if (demand == 0) return false;
+            
+            Method getInputVoltageMethod = container.getClass().getMethod("getInputVoltage");
+            Method getInputAmperageMethod = container.getClass().getMethod("getInputAmperage");
+            Method acceptEnergyMethod = container.getClass().getMethod("acceptEnergyFromNetwork", Direction.class, long.class, long.class);
+            
+            long voltage = (Long) getInputVoltageMethod.invoke(container);
+            long amperage = (Long) getInputAmperageMethod.invoke(container);
+            
+            // 从邻居能量源获取能量（FE）
+            // 优先级：Flux Networks (long) > Long Energy (long) > Forge Energy (int)
+            
+            // 1. 优先尝试 Flux Networks（支持 Long，无限制）
+            Object sourceFlux = getNeighborFluxEnergy();
+            if (sourceFlux != null) {
+                return pushFluxToGT(sourceFlux, container, side, voltage, amperage, demand);
+            }
+            
+            // 2. 尝试 Long 接口
+            ILongEnergyStorage sourceLong = getNeighborLongEnergy();
+            if (sourceLong != null) {
+                return pushLongToGT(sourceLong, container, side, voltage, amperage, demand, acceptEnergyMethod);
+            }
+            
+            // 3. 回退到标准 Forge Energy（限制为 Integer.MAX_VALUE）
+            IEnergyStorage sourceEnergy = getNeighborForgeEnergy();
+            if (sourceEnergy == null) {
+                return false;
+            }
+            
+            // 尝试提取尽可能多的能量（受限于 Integer.MAX_VALUE）
+            int extractedFE = sourceEnergy.extractEnergy(Integer.MAX_VALUE, true);
+            if (extractedFE == 0) return false;
+            
+            // FE 转换为 EU (4 FE = 1 EU)
+            long amountEU = extractedFE >> 2;
+            
+            // 计算实际传输的电压：取(机器电压, 可用EU, 需求)的最小值
+            long actualVoltage = Math.min(Math.min(voltage, amountEU), demand);
+            if (actualVoltage == 0) return false;
+            
+            // 计算实际传输的电流：取(机器电流, 可用EU/电压)的最小值
+            long actualAmperage = Math.min(amperage, amountEU / actualVoltage);
+            
+            // 调用格雷科技的接收方法
+            long acceptedAmperage = (Long) acceptEnergyMethod.invoke(container, side, actualVoltage, actualAmperage);
+            long transferredEU = actualVoltage * acceptedAmperage;
+            
+            if (transferredEU > 0) {
+                // 从源实际提取对应的FE（受限于 int 范围）
+                int actualExtractFE = (int) Math.min(transferredEU << 2, Integer.MAX_VALUE);
+                sourceEnergy.extractEnergy(actualExtractFE, false);
+                return true;
+            }
+        } catch (Exception e) {
+            // 传输失败
+        }
+        return false;
+    }
+    
+    /**
+     * 使用Long能量接口推送到格雷科技
+     */
+    private boolean pushLongToGT(ILongEnergyStorage source, Object container, Direction side, 
+                                  long voltage, long amperage, long demand, Method acceptEnergyMethod) {
+        try {
+            // 尝试提取尽可能多的能量
+            long extractedFE = source.extractEnergyL(Long.MAX_VALUE, true);
+            if (extractedFE == 0) return false;
+            
+            // FE 转换为 EU (4 FE = 1 EU)
+            long amountEU = extractedFE >> 2;
+            
+            // 计算实际传输的电压：取(机器电压, 可用EU, 需求)的最小值
+            long actualVoltage = Math.min(Math.min(voltage, amountEU), demand);
+            if (actualVoltage == 0) return false;
+            
+            // 计算实际传输的电流：取(机器电流, 可用EU/电压)的最小值
+            long actualAmperage = Math.min(amperage, amountEU / actualVoltage);
+            
+            // 调用格雷科技的接收方法
+            long acceptedAmperage = (Long) acceptEnergyMethod.invoke(container, side, actualVoltage, actualAmperage);
+            long transferredEU = actualVoltage * acceptedAmperage;
+            
+            if (transferredEU > 0) {
+                // 从源实际提取对应的FE
+                long actualExtractFE = transferredEU << 2;
+                source.extractEnergyL(actualExtractFE, false);
+                return true;
+            }
+        } catch (Exception e) {
+            // 传输失败
+        }
+        return false;
+    }
+    
+    /**
+     * 使用Flux Networks接口推送到格雷科技
+     */
+    private boolean pushFluxToGT(Object sourceFlux, Object container, Direction side,
+                                  long voltage, long amperage, long demand) {
+        try {
+            Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
+            Method acceptEnergyMethod = container.getClass().getMethod("acceptEnergyFromNetwork", Direction.class, long.class, long.class);
+            
+            // 尝试提取尽可能多的能量（Long.MAX_VALUE）
+            long extractedFE = (Long) extractMethod.invoke(sourceFlux, Long.MAX_VALUE, true);
+            if (extractedFE == 0) return false;
+            
+            // FE 转换为 EU (4 FE = 1 EU)
+            long amountEU = extractedFE >> 2;
+            
+            // 计算实际传输的电压：取(机器电压, 可用EU, 需求)的最小值
+            long actualVoltage = Math.min(Math.min(voltage, amountEU), demand);
+            if (actualVoltage == 0) return false;
+            
+            // 计算实际传输的电流：取(机器电流, 可用EU/电压)的最小值
+            long actualAmperage = Math.min(amperage, amountEU / actualVoltage);
+            
+            // 调用格雷科技的接收方法
+            long acceptedAmperage = (Long) acceptEnergyMethod.invoke(container, side, actualVoltage, actualAmperage);
+            long transferredEU = actualVoltage * acceptedAmperage;
+            
+            if (transferredEU > 0) {
+                // 从Flux源实际提取对应的FE
+                long actualExtractFE = transferredEU << 2;
+                extractMethod.invoke(sourceFlux, actualExtractFE, false);
+                return true;
+            }
+        } catch (Exception e) {
+            // 传输失败
+        }
+        return false;
+    }
 
     /**
      * 尝试使用Long能量接口推送能量（主动模式）
