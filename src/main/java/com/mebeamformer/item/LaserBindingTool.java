@@ -220,17 +220,25 @@ public class LaserBindingTool extends Item {
                 }
                 
                 BlockEntity beSource = level.getBlockEntity(source);
-                if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity) {
-                    // 检查是否已经连接
-                    if (sourceEntity.getLinks().contains(pos)) {
-                        // 已连接，断开连接
+                BlockEntity beTarget = level.getBlockEntity(pos);
+                
+                if (beSource instanceof WirelessEnergyTowerBlockEntity sourceEntity && 
+                    beTarget instanceof WirelessEnergyTowerBlockEntity targetEntity) {
+                    
+                    // 检查是否已经连接（检查双向）
+                    boolean isLinked = sourceEntity.getLinks().contains(pos);
+                    
+                    if (isLinked) {
+                        // 已连接，断开双向连接
                         sourceEntity.removeLink(pos);
+                        targetEntity.removeLink(source);
                         if (player != null) {
                             player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_to_tower_unlinked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
                         }
                     } else {
-                        // 未连接，建立链接：从源到目标的单向连接
+                        // 未连接，建立双向连接
                         sourceEntity.addLink(pos);
+                        targetEntity.addLink(source);
                         if (player != null) {
                             player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_to_tower_linked", source.getX(), source.getY(), source.getZ(), pos.getX(), pos.getY(), pos.getZ()), true);
                         }
