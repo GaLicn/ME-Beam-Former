@@ -280,37 +280,45 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 }
                 
                 // 尝试Long接口（支持超大值传输）
-                LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
-                if (longCap.isPresent()) {
-                    ILongEnergyStorage storage = longCap.orElse(null);
-                    if (storage != null && storage.canReceive()) {
-                        long inserted = storage.receiveEnergyL(remaining, simulate);
-                        totalInserted += inserted;
-                        continue;
+                try {
+                    LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                    if (longCap.isPresent()) {
+                        ILongEnergyStorage storage = longCap.resolve().orElse(null);
+                        if (storage != null && storage.canReceive()) {
+                            long inserted = storage.receiveEnergyL(remaining, simulate);
+                            totalInserted += inserted;
+                            continue;
+                        }
                     }
+                } catch (ClassCastException e) {
+                    // 跳过不兼容的能力实现
                 }
                 
                 // 回退到标准接口（分批传输突破INT_MAX）
-                LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-                if (normalCap.isPresent()) {
-                    IEnergyStorage storage = normalCap.orElse(null);
-                    if (storage != null && storage.canReceive()) {
-                        if (simulate) {
-                            // 模拟模式：单次传输，取最大可能值
-                            int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
-                            int inserted = storage.receiveEnergy(batchSize, true);
-                            totalInserted += inserted;
-                        } else {
-                            // 实际传输：分批传输直到完成或设备满
-                            while (remaining > 0 && totalInserted < amount) {
+                try {
+                    LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                    if (normalCap.isPresent()) {
+                        IEnergyStorage storage = normalCap.resolve().orElse(null);
+                        if (storage != null && storage.canReceive()) {
+                            if (simulate) {
+                                // 模拟模式：单次传输，取最大可能值
                                 int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
-                                int inserted = storage.receiveEnergy(batchSize, false);
-                                if (inserted == 0) break; // 设备已满
+                                int inserted = storage.receiveEnergy(batchSize, true);
                                 totalInserted += inserted;
-                                remaining -= inserted;
+                            } else {
+                                // 实际传输：分批传输直到完成或设备满
+                                while (remaining > 0 && totalInserted < amount) {
+                                    int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
+                                    int inserted = storage.receiveEnergy(batchSize, false);
+                                    if (inserted == 0) break; // 设备已满
+                                    totalInserted += inserted;
+                                    remaining -= inserted;
+                                }
                             }
                         }
                     }
+                } catch (ClassCastException e) {
+                    // 跳过不兼容的能力实现
                 }
             }
         }
@@ -374,41 +382,49 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         
         // 尝试Long能量接口（支持超大值）
         for (Direction dir : Direction.values()) {
-            LazyOptional<ILongEnergyStorage> longCap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
-            if (longCap.isPresent()) {
-                ILongEnergyStorage storage = longCap.orElse(null);
-                if (storage != null && storage.canReceive()) {
-                    return storage.receiveEnergyL(amount, simulate);
+            try {
+                LazyOptional<ILongEnergyStorage> longCap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
+                if (longCap.isPresent()) {
+                    ILongEnergyStorage storage = longCap.resolve().orElse(null);
+                    if (storage != null && storage.canReceive()) {
+                        return storage.receiveEnergyL(amount, simulate);
+                    }
                 }
+            } catch (ClassCastException e) {
+                // 跳过不兼容的能力实现
             }
         }
         
         // 回退到标准Forge Energy（分批传输突破INT_MAX）
         for (Direction dir : Direction.values()) {
-            LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
-            if (cap.isPresent()) {
-                IEnergyStorage storage = cap.orElse(null);
-                if (storage != null && storage.canReceive()) {
-                    if (simulate) {
-                        // 模拟模式：单次传输，取最大可能值
-                        int batchSize = (int) Math.min(amount, Integer.MAX_VALUE);
-                        return storage.receiveEnergy(batchSize, true);
-                    } else {
-                        // 实际传输：分批传输直到完成或设备满
-                        long totalInserted = 0;
-                        long remaining = amount;
-                        
-                        while (remaining > 0) {
-                            int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
-                            int batchInserted = storage.receiveEnergy(batchSize, false);
-                            if (batchInserted == 0) break; // 设备已满
-                            totalInserted += batchInserted;
-                            remaining -= batchInserted;
+            try {
+                LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
+                if (cap.isPresent()) {
+                    IEnergyStorage storage = cap.resolve().orElse(null);
+                    if (storage != null && storage.canReceive()) {
+                        if (simulate) {
+                            // 模拟模式：单次传输，取最大可能值
+                            int batchSize = (int) Math.min(amount, Integer.MAX_VALUE);
+                            return storage.receiveEnergy(batchSize, true);
+                        } else {
+                            // 实际传输：分批传输直到完成或设备满
+                            long totalInserted = 0;
+                            long remaining = amount;
+                            
+                            while (remaining > 0) {
+                                int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
+                                int batchInserted = storage.receiveEnergy(batchSize, false);
+                                if (batchInserted == 0) break; // 设备已满
+                                totalInserted += batchInserted;
+                                remaining -= batchInserted;
+                            }
+                            
+                            return totalInserted;
                         }
-                        
-                        return totalInserted;
                     }
                 }
+            } catch (ClassCastException e) {
+                // 跳过不兼容的能力实现
             }
         }
         
@@ -432,7 +448,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             
             LazyOptional<?> cap = target.getCapability(fluxCap, side);
             if (cap.isPresent()) {
-                Object storage = cap.orElse(null);
+                Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
                     // 检查是否可以接收
                     Method canReceiveMethod = storage.getClass().getMethod("canReceive");
@@ -461,7 +477,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             for (Direction dir : Direction.values()) {
                 LazyOptional<?> cap = target.getCapability(gtCap, dir);
                 if (cap.isPresent()) {
-                    Object container = cap.orElse(null);
+                    Object container = cap.resolve().orElse(null);
                     if (container != null) {
                         Method inputsEnergyMethod = container.getClass().getMethod("inputsEnergy", Direction.class);
                         if ((Boolean) inputsEnergyMethod.invoke(container, dir)) {
@@ -510,7 +526,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             for (Direction dir : Direction.values()) {
                 LazyOptional<?> cap = target.getCapability(gtCap, dir);
                 if (cap.isPresent()) {
-                    Object container = cap.orElse(null);
+                    Object container = cap.resolve().orElse(null);
                     if (container != null) {
                         // 检查是否可以输入能量
                         Method inputsEnergyMethod = container.getClass().getMethod("inputsEnergy", Direction.class);
@@ -744,13 +760,18 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         // 检查目标是否支持Long能量接收
         ILongEnergyStorage targetLongEnergy = null;
         for (Direction dir : Direction.values()) {
-            LazyOptional<ILongEnergyStorage> cap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
-            if (cap.isPresent()) {
-                targetLongEnergy = cap.orElse(null);
-                if (targetLongEnergy != null && targetLongEnergy.canReceive()) {
-                    break;
+            try {
+                LazyOptional<ILongEnergyStorage> cap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
+                if (cap.isPresent()) {
+                    targetLongEnergy = cap.resolve().orElse(null);
+                    if (targetLongEnergy != null && targetLongEnergy.canReceive()) {
+                        break;
+                    }
+                    targetLongEnergy = null;
                 }
-                targetLongEnergy = null;
+            } catch (ClassCastException e) {
+                // 某些模组使用代理包装能力，跳过不兼容的实现
+                continue;
             }
         }
 
@@ -769,13 +790,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         // 目标不支持Long能量，尝试标准能量接口
         IEnergyStorage targetEnergy = null;
         for (Direction dir : Direction.values()) {
-            LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
-            if (cap.isPresent()) {
-                targetEnergy = cap.orElse(null);
-                if (targetEnergy != null && targetEnergy.canReceive()) {
-                    break;
+            try {
+                LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
+                if (cap.isPresent()) {
+                    targetEnergy = cap.resolve().orElse(null);
+                    if (targetEnergy != null && targetEnergy.canReceive()) {
+                        break;
+                    }
+                    targetEnergy = null;
                 }
-                targetEnergy = null;
+            } catch (ClassCastException e) {
+                // 跳过不兼容的能力实现
             }
         }
 
@@ -808,10 +833,11 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             for (Direction dir : Direction.values()) {
                 BlockPos neighborPos = worldPosition.relative(dir);
                 BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-                if (neighborBE != null && neighborBE != this) {
+                // 跳过自己和其他无线能源感应塔（避免无限递归）
+                if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
                     LazyOptional<?> cap = neighborBE.getCapability(fluxCap, dir.getOpposite());
                     if (cap.isPresent()) {
-                        Object storage = cap.orElse(null);
+                        Object storage = cap.resolve().orElse(null);
                         if (storage != null) {
                             // 检查是否可以提取
                             Method canExtractMethod = storage.getClass().getMethod("canExtract");
@@ -841,7 +867,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             for (Direction dir : Direction.values()) {
                 LazyOptional<?> cap = target.getCapability(fluxCap, dir);
                 if (cap.isPresent()) {
-                    targetFlux = cap.orElse(null);
+                    targetFlux = cap.resolve().orElse(null);
                     if (targetFlux != null) {
                         Method canReceiveMethod = targetFlux.getClass().getMethod("canReceive");
                         if ((Boolean) canReceiveMethod.invoke(targetFlux)) {
@@ -872,13 +898,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 // 目标不支持Flux，尝试标准接口
                 IEnergyStorage targetEnergy = null;
                 for (Direction dir : Direction.values()) {
-                    LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
-                    if (cap.isPresent()) {
-                        targetEnergy = cap.orElse(null);
-                        if (targetEnergy != null && targetEnergy.canReceive()) {
-                            break;
+                    try {
+                        LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
+                        if (cap.isPresent()) {
+                            targetEnergy = cap.resolve().orElse(null);
+                            if (targetEnergy != null && targetEnergy.canReceive()) {
+                                break;
+                            }
+                            targetEnergy = null;
                         }
-                        targetEnergy = null;
+                    } catch (ClassCastException e) {
+                        // 跳过不兼容的能力实现
                     }
                 }
                 
@@ -909,13 +939,19 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         for (Direction dir : Direction.values()) {
             BlockPos neighborPos = worldPosition.relative(dir);
             BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-            if (neighborBE != null && neighborBE != this) {
-                LazyOptional<ILongEnergyStorage> cap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
-                if (cap.isPresent()) {
-                    ILongEnergyStorage storage = cap.orElse(null);
-                    if (storage != null && storage.canExtract()) {
-                        return storage;
+            // 跳过自己和其他无线能源感应塔（避免无限递归）
+            if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                try {
+                    LazyOptional<ILongEnergyStorage> cap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                    if (cap.isPresent()) {
+                        ILongEnergyStorage storage = cap.resolve().orElse(null);
+                        if (storage != null && storage.canExtract()) {
+                            return storage;
+                        }
                     }
+                } catch (ClassCastException e) {
+                    // 某些模组使用代理包装能力，跳过不兼容的实现
+                    continue;
                 }
             }
         }
@@ -933,13 +969,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         // 获取目标的能量存储
         IEnergyStorage targetEnergy = null;
         for (Direction dir : Direction.values()) {
-            LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
-            if (cap.isPresent()) {
-                targetEnergy = cap.orElse(null);
-                if (targetEnergy != null && targetEnergy.canReceive()) {
-                    break;
+            try {
+                LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
+                if (cap.isPresent()) {
+                    targetEnergy = cap.resolve().orElse(null);
+                    if (targetEnergy != null && targetEnergy.canReceive()) {
+                        break;
+                    }
+                    targetEnergy = null;
                 }
-                targetEnergy = null;
+            } catch (ClassCastException e) {
+                // 跳过不兼容的能力实现
             }
         }
 
@@ -966,13 +1006,19 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         for (Direction dir : Direction.values()) {
             BlockPos neighborPos = worldPosition.relative(dir);
             BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-            if (neighborBE != null && neighborBE != this) {
-                LazyOptional<IEnergyStorage> cap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-                if (cap.isPresent()) {
-                    IEnergyStorage storage = cap.orElse(null);
-                    if (storage != null && storage.canExtract()) {
-                        return storage;
+            // 跳过自己和其他无线能源感应塔（避免无限递归）
+            if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                try {
+                    LazyOptional<IEnergyStorage> cap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                    if (cap.isPresent()) {
+                        IEnergyStorage storage = cap.resolve().orElse(null);
+                        if (storage != null && storage.canExtract()) {
+                            return storage;
+                        }
                     }
+                } catch (ClassCastException e) {
+                    // 跳过不兼容的能力实现
+                    continue;
                 }
             }
         }
@@ -1191,7 +1237,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             
             LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
             if (cap.isPresent()) {
-                Object storage = cap.orElse(null);
+                Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
                     Method extractMethod = storage.getClass().getMethod("extractEnergyL", long.class, boolean.class);
                     return (Long) extractMethod.invoke(storage, maxExtract, simulate);
@@ -1276,7 +1322,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             
             LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
             if (cap.isPresent()) {
-                Object storage = cap.orElse(null);
+                Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
                     Method method = storage.getClass().getMethod("getEnergyStoredL");
                     return (Long) method.invoke(storage);
@@ -1298,7 +1344,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             
             LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
             if (cap.isPresent()) {
-                Object storage = cap.orElse(null);
+                Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
                     Method method = storage.getClass().getMethod("getMaxEnergyStoredL");
                     return (Long) method.invoke(storage);
@@ -1313,8 +1359,13 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
      * 获取标准Forge能量存储
      */
     private IEnergyStorage getForgeEnergyStorage(BlockEntity be, Direction side) {
-        LazyOptional<IEnergyStorage> cap = be.getCapability(ForgeCapabilities.ENERGY, side);
-        return cap.orElse(null);
+        try {
+            LazyOptional<IEnergyStorage> cap = be.getCapability(ForgeCapabilities.ENERGY, side);
+            return cap.resolve().orElse(null);
+        } catch (ClassCastException e) {
+            // 跳过不兼容的能力实现
+            return null;
+        }
     }
     
     /**
@@ -1339,16 +1390,26 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             for (Direction dir : Direction.values()) {
                 BlockPos neighborPos = worldPosition.relative(dir);
                 BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-                if (neighborBE != null && neighborBE != WirelessEnergyTowerBlockEntity.this) {
+                // 跳过自己和其他无线能源感应塔（避免无限递归）
+                if (neighborBE != null && neighborBE != WirelessEnergyTowerBlockEntity.this 
+                        && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
                     // 优先尝试Long能量接口
-                    LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
-                    if (longCap.isPresent()) {
-                        return longCap.orElse(null);
+                    try {
+                        LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                        if (longCap.isPresent()) {
+                            return longCap.resolve().orElse(null);
+                        }
+                    } catch (ClassCastException e) {
+                        // 跳过不兼容的能力实现
                     }
                     // 回退到标准能量接口
-                    LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-                    if (normalCap.isPresent()) {
-                        return normalCap.orElse(null);
+                    try {
+                        LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                        if (normalCap.isPresent()) {
+                            return normalCap.resolve().orElse(null);
+                        }
+                    } catch (ClassCastException e) {
+                        // 跳过不兼容的能力实现
                     }
                 }
             }
