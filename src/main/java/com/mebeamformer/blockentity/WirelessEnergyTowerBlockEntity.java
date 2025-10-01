@@ -238,6 +238,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         long totalInserted = 0;
         
         // 1. 先分配给当前塔的邻居设备
+        // 优先级：Flux Networks (Long) > Long接口 > 标准接口（分批）
         for (Direction dir : Direction.values()) {
             if (totalInserted >= amount) break;
             
@@ -246,7 +247,14 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
                 long remaining = amount - totalInserted;
                 
-                // 尝试Long接口
+                // 优先尝试Flux Networks接口（支持Long，无限制）
+                long fluxInserted = tryInsertFluxEnergy(neighborBE, dir.getOpposite(), remaining, simulate);
+                if (fluxInserted > 0) {
+                    totalInserted += fluxInserted;
+                    continue;
+                }
+                
+                // 尝试Long接口（支持超大值传输）
                 LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
                 if (longCap.isPresent()) {
                     ILongEnergyStorage storage = longCap.orElse(null);
@@ -257,13 +265,26 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                     }
                 }
                 
-                // 回退到标准接口
+                // 回退到标准接口（分批传输突破INT_MAX）
                 LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
                 if (normalCap.isPresent()) {
                     IEnergyStorage storage = normalCap.orElse(null);
                     if (storage != null && storage.canReceive()) {
-                        int inserted = storage.receiveEnergy((int) Math.min(remaining, Integer.MAX_VALUE), simulate);
-                        totalInserted += inserted;
+                        if (simulate) {
+                            // 模拟模式：单次传输，取最大可能值
+                            int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
+                            int inserted = storage.receiveEnergy(batchSize, true);
+                            totalInserted += inserted;
+                        } else {
+                            // 实际传输：分批传输直到完成或设备满
+                            while (remaining > 0 && totalInserted < amount) {
+                                int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
+                                int inserted = storage.receiveEnergy(batchSize, false);
+                                if (inserted == 0) break; // 设备已满
+                                totalInserted += inserted;
+                                remaining -= inserted;
+                            }
+                        }
                     }
                 }
             }
@@ -310,15 +331,23 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     /**
      * 直接推送能量到目标设备（用于能量分配）
      * 返回实际插入的能量
+     * 支持超过INT_MAX的传输
+     * 优先级：Flux Networks (Long) > GregTech > Long接口 > 标准接口（分批）
      */
     private long pushEnergyToTargetDirect(BlockEntity target, long amount, boolean simulate) {
         if (level == null || amount <= 0) return 0;
         
-        // 尝试格雷科技
+        // 优先尝试Flux Networks接口（支持Long，无限制）
+        for (Direction dir : Direction.values()) {
+            long fluxInserted = tryInsertFluxEnergy(target, dir, amount, simulate);
+            if (fluxInserted > 0) return fluxInserted;
+        }
+        
+        // 尝试格雷科技（支持Long）
         long inserted = tryPushGTEnergyDirect(target, amount, simulate);
         if (inserted > 0) return inserted;
         
-        // 尝试Long能量接口
+        // 尝试Long能量接口（支持超大值）
         for (Direction dir : Direction.values()) {
             LazyOptional<ILongEnergyStorage> longCap = target.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir);
             if (longCap.isPresent()) {
@@ -329,17 +358,69 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             }
         }
         
-        // 回退到标准Forge Energy
+        // 回退到标准Forge Energy（分批传输突破INT_MAX）
         for (Direction dir : Direction.values()) {
             LazyOptional<IEnergyStorage> cap = target.getCapability(ForgeCapabilities.ENERGY, dir);
             if (cap.isPresent()) {
                 IEnergyStorage storage = cap.orElse(null);
                 if (storage != null && storage.canReceive()) {
-                    return storage.receiveEnergy((int) Math.min(amount, Integer.MAX_VALUE), simulate);
+                    if (simulate) {
+                        // 模拟模式：单次传输，取最大可能值
+                        int batchSize = (int) Math.min(amount, Integer.MAX_VALUE);
+                        return storage.receiveEnergy(batchSize, true);
+                    } else {
+                        // 实际传输：分批传输直到完成或设备满
+                        long totalInserted = 0;
+                        long remaining = amount;
+                        
+                        while (remaining > 0) {
+                            int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
+                            int batchInserted = storage.receiveEnergy(batchSize, false);
+                            if (batchInserted == 0) break; // 设备已满
+                            totalInserted += batchInserted;
+                            remaining -= batchInserted;
+                        }
+                        
+                        return totalInserted;
+                    }
                 }
             }
         }
         
+        return 0;
+    }
+    
+    /**
+     * 尝试使用Flux Networks接口插入能量（支持Long）
+     * 
+     * @param target 目标方块实体
+     * @param side 插入方向
+     * @param amount 要插入的能量
+     * @param simulate 是否模拟
+     * @return 实际插入的能量
+     */
+    private long tryInsertFluxEnergy(BlockEntity target, Direction side, long amount, boolean simulate) {
+        try {
+            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
+            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
+            Capability<?> fluxCap = (Capability<?>) field.get(null);
+            
+            LazyOptional<?> cap = target.getCapability(fluxCap, side);
+            if (cap.isPresent()) {
+                Object storage = cap.orElse(null);
+                if (storage != null) {
+                    // 检查是否可以接收
+                    Method canReceiveMethod = storage.getClass().getMethod("canReceive");
+                    if ((Boolean) canReceiveMethod.invoke(storage)) {
+                        // 使用Long版本的接收方法
+                        Method receiveMethod = storage.getClass().getMethod("receiveEnergyL", long.class, boolean.class);
+                        return (Long) receiveMethod.invoke(storage, amount, simulate);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Flux Networks未安装或不兼容
+        }
         return 0;
     }
     

@@ -145,7 +145,7 @@ dependencies {
     implementation fg.deobf("curse.maven:jei-238222:7014291")
     implementation fg.deobf("curse.maven:mekanism-268560:6552911")
     implementation fg.deobf("curse.maven:flux-networks-248020:5234697")
-   // implementation fg.deobf("curse.maven:applied-flux-965012:6755986")
+    implementation fg.deobf("curse.maven:applied-flux-965012:6755986")
     implementation fg.deobf("curse.maven:glodium-957920:5226922")
 
     //GREGTECH
