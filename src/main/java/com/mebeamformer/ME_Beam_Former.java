@@ -106,6 +106,7 @@ public class ME_Beam_Former {
                     .strength(3.5f)
                     .sound(SoundType.METAL)
                     .requiresCorrectToolForDrops()
+                    .noOcclusion()
             ));
     public static final RegistryObject<Item> WIRELESS_ENERGY_TOWER_ITEM = ITEMS.register("wireless_energy_tower",
             () -> new BlockItem(WIRELESS_ENERGY_TOWER_BLOCK.get(), new Item.Properties()));

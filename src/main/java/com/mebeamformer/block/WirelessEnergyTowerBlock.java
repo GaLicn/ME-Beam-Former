@@ -23,6 +23,7 @@ import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.level.BlockGetter;
 import org.jetbrains.annotations.Nullable;
 
@@ -39,6 +40,30 @@ public class WirelessEnergyTowerBlock extends Block implements EntityBlock {
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         builder.add(PART);
+    }
+
+    // 非完整方块的可视/遮挡与采光修正，避免看穿或相邻面错误被裁剪
+    @Override
+    public boolean useShapeForLightOcclusion(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public VoxelShape getOcclusionShape(BlockState state, BlockGetter level, BlockPos pos) {
+        // 返回空遮挡形状，配合 noOcclusion 防止错误遮挡与邻面裁剪
+        return Shapes.empty();
+    }
+
+    @Override
+    public boolean propagatesSkylightDown(BlockState state, BlockGetter level, BlockPos pos) {
+        // 允许天空光穿过非完整几何，避免出现阴影块的视觉瑕疵
+        return true;
+    }
+
+    @Override
+    public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) {
+        // 不阻挡环境光，避免在下方形成不合理的阴影
+        return 0;
     }
 
     @Nullable
@@ -134,7 +159,7 @@ public class WirelessEnergyTowerBlock extends Block implements EntityBlock {
     public BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         // 只在底部创建BlockEntity
         if (state.getValue(PART) == 0) {
-            return new WirelessEnergyTowerBlockEntity(pos, state);
+        return new WirelessEnergyTowerBlockEntity(pos, state);
         }
         return null;
     }
