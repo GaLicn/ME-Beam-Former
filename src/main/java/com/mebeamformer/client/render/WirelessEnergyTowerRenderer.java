@@ -1,5 +1,6 @@
 package com.mebeamformer.client.render;
 
+import com.mebeamformer.Config;
 import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
 import com.mebeamformer.item.LaserBindingTool;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -24,14 +25,17 @@ public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<Wireless
         Level level = be.getLevel();
         if (level == null) return;
         
-        // 检查玩家是否手持光束绑定器
-        Player player = Minecraft.getInstance().player;
-        if (player == null) return;
-        
-        boolean holdingBindingTool = player.getMainHandItem().getItem() instanceof LaserBindingTool
-                || player.getOffhandItem().getItem() instanceof LaserBindingTool;
-        
-        if (!holdingBindingTool) return;
+        // 检查是否应该渲染光束
+        // 如果配置为不总是渲染，则只在玩家手持光束绑定器时渲染
+        if (!Config.alwaysRenderBeams) {
+            Player player = Minecraft.getInstance().player;
+            if (player == null) return;
+            
+            boolean holdingBindingTool = player.getMainHandItem().getItem() instanceof LaserBindingTool
+                    || player.getOffhandItem().getItem() instanceof LaserBindingTool;
+            
+            if (!holdingBindingTool) return;
+        }
         
         // 获取客户端同步的连接目标
         var links = be.getClientLinks();

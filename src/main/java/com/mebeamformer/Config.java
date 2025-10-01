@@ -24,6 +24,10 @@ public class Config
             .comment("Whether to log the dirt block on common setup")
             .define("logDirtBlock", true);
 
+    private static final ForgeConfigSpec.BooleanValue ALWAYS_RENDER_BEAMS = BUILDER
+            .comment("Whether to always render energy tower beams. When true, beams are always visible. When false, beams are only visible when holding the laser binding tool.")
+            .define("alwaysRenderBeams", true);
+
     private static final ForgeConfigSpec.IntValue MAGIC_NUMBER = BUILDER
             .comment("A magic number")
             .defineInRange("magicNumber", 42, 0, Integer.MAX_VALUE);
@@ -40,6 +44,7 @@ public class Config
     static final ForgeConfigSpec SPEC = BUILDER.build();
 
     public static boolean logDirtBlock;
+    public static boolean alwaysRenderBeams;
     public static int magicNumber;
     public static String magicNumberIntroduction;
     public static Set<Item> items;
@@ -53,6 +58,7 @@ public class Config
     static void onLoad(final ModConfigEvent event)
     {
         logDirtBlock = LOG_DIRT_BLOCK.get();
+        alwaysRenderBeams = ALWAYS_RENDER_BEAMS.get();
         magicNumber = MAGIC_NUMBER.get();
         magicNumberIntroduction = MAGIC_NUMBER_INTRODUCTION.get();
 
