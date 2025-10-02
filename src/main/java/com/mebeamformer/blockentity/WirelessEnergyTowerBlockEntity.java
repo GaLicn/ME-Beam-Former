@@ -1216,12 +1216,13 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 }
             }
             
-            // 标准能量能力 - 只返回标准接口实现，不混入 Flux Networks
+            // 标准能量能力 - 返回支持多接口的通用能量存储（兼容AppliedFlux）
             if (cap == ForgeCapabilities.ENERGY) {
-                // 对于标准 Forge Energy 请求，只返回 IEnergyStorage 实现
+                // 返回同时支持 IEnergyStorage 和 IFNEnergyStorage 的代理对象
+                // 防止 AppliedFlux 尝试强制转换时崩溃
                 LazyOptional<?> handler = forgeEnergyCaps[index];
                 if (handler == null) {
-                    TowerEnergyStorage storage = new TowerEnergyStorage(side);
+                    Object storage = createUniversalEnergyStorage(side);
                     handler = LazyOptional.of(() -> storage);
                     forgeEnergyCaps[index] = handler;
                 }
@@ -1232,7 +1233,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             if (cap == MEBFCapabilities.LONG_ENERGY_STORAGE) {
                 LazyOptional<?> handler = longEnergyCaps[index];
                 if (handler == null) {
-                    TowerEnergyStorage storage = new TowerEnergyStorage(side);
+                    Object storage = createUniversalEnergyStorage(side);
                     handler = LazyOptional.of(() -> storage);
                     longEnergyCaps[index] = handler;
                 }
