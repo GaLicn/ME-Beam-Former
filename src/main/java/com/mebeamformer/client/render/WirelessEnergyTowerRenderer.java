@@ -18,6 +18,21 @@ public class WirelessEnergyTowerRenderer implements BlockEntityRenderer<Wireless
     public WirelessEnergyTowerRenderer(BlockEntityRendererProvider.Context ctx) {}
 
     @Override
+    public int getViewDistance() {
+        // 扩大渲染距离以确保远距离光束能够被渲染
+        // 无线能量塔可能有更远的连接距离
+        return 512;
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(WirelessEnergyTowerBlockEntity be) {
+        // 允许即使BlockEntity不在屏幕上也渲染光束
+        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
+        var links = be != null ? be.getClientLinks() : null;
+        return links != null && !links.isEmpty();
+    }
+
+    @Override
     public void render(WirelessEnergyTowerBlockEntity be, float partialTicks, PoseStack poseStack, 
                       MultiBufferSource buffers, int packedLight, int packedOverlay) {
         if (be == null) return;

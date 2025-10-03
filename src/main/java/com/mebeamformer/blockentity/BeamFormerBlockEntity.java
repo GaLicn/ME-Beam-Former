@@ -357,6 +357,8 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         BlockPos endPos = pos.relative(dir, len);
         
         // 计算包含光束起点和终点的边界框
+        // 关键：渲染边界框必须覆盖整条光束，这样即使玩家只能看到光束中间部分，
+        // 至少有一个端点的BlockEntity会被触发渲染
         double minX = Math.min(pos.getX(), endPos.getX());
         double minY = Math.min(pos.getY(), endPos.getY());
         double minZ = Math.min(pos.getZ(), endPos.getZ());
@@ -364,8 +366,9 @@ public class BeamFormerBlockEntity extends AENetworkBlockEntity {
         double maxY = Math.max(pos.getY() + 1, endPos.getY() + 1);
         double maxZ = Math.max(pos.getZ() + 1, endPos.getZ() + 1);
         
-        // 大幅扩大边界框，特别针对近距离视角问题
-        double expansion = 5.0;
+        // 适度扩展以处理光束的粗细和视角边缘情况
+        // 不需要过大，因为边界框已经覆盖了整条光束
+        double expansion = 2.0;
         return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
                        maxX + expansion, maxY + expansion, maxZ + expansion);
     }

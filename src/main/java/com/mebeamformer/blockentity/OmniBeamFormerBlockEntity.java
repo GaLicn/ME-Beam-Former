@@ -249,6 +249,8 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity implements I
 
         BlockPos pos = getBlockPos();
         // 计算包含所有目标的边界框
+        // 关键：渲染边界框必须覆盖所有光束，这样即使玩家只能看到光束中间部分，
+        // 至少有一个端点的BlockEntity会被触发渲染
         double minX = pos.getX();
         double minY = pos.getY();
         double minZ = pos.getZ();
@@ -265,8 +267,9 @@ public class OmniBeamFormerBlockEntity extends AENetworkBlockEntity implements I
             maxZ = Math.max(maxZ, target.getZ() + 1);
         }
 
-        // 大幅扩大边界框，特别针对近距离视角问题
-        double expansion = 5.0;
+        // 适度扩展以处理光束的粗细和视角边缘情况
+        // 不需要过大，因为边界框已经覆盖了所有光束
+        double expansion = 2.0;
         return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
                        maxX + expansion, maxY + expansion, maxZ + expansion);
     }

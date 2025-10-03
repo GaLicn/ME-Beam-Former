@@ -19,6 +19,21 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
     public OmniBeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
 
     @Override
+    public int getViewDistance() {
+        // 扩大渲染距离以确保远距离光束能够被渲染
+        // 返回一个足够大的值以覆盖可能的远距离光束
+        return 256;
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(OmniBeamFormerBlockEntity be) {
+        // 允许即使BlockEntity不在屏幕上也渲染光束
+        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
+        var targets = be != null ? be.getClientActiveTargets() : null;
+        return targets != null && !targets.isEmpty();
+    }
+
+    @Override
     public void render(OmniBeamFormerBlockEntity be, float partialTicks, PoseStack poseStack, MultiBufferSource buffers, int packedLight, int packedOverlay) {
         if (be == null) return;
         BlockState state = be.getBlockState();

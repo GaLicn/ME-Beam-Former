@@ -18,6 +18,20 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
     public BeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
 
     @Override
+    public int getViewDistance() {
+        // 扩大渲染距离以确保远距离光束能够被渲染
+        // 返回一个足够大的值以覆盖最大可能的光束长度（32格）加上额外缓冲
+        return 256;
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(BeamFormerBlockEntity te) {
+        // 允许即使BlockEntity不在屏幕上也渲染光束
+        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
+        return te != null && te.getBeamLength() > 0;
+    }
+
+    @Override
     public void render(BeamFormerBlockEntity te, float partialTicks, PoseStack poseStack, MultiBufferSource buffers, int packedLight, int packedOverlay) {
         if (te == null) return;
         BlockState state = te.getBlockState();
