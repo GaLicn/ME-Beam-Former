@@ -148,6 +148,11 @@ dependencies {
     implementation fg.deobf("curse.maven:applied-flux-965012:6755986")
     implementation fg.deobf("curse.maven:glodium-957920:5226922")
 
+    //性能监测
+    runtimeOnly fg.deobf("curse.maven:observable-509575:5643037")
+    runtimeOnly fg.deobf("curse.maven:kotlin-for-forge-351264:5402061")
+    runtimeOnly fg.deobf("curse.maven:architectury-api-419699:5137938")
+
     //GREGTECH
     //implementation fg.deobf("curse.maven:configuration-444699:5840405")
     //implementation fg.deobf("curse.maven:ldlib-626676:6995785")
