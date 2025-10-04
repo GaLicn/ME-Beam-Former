@@ -45,8 +45,56 @@ import java.lang.reflect.Method;
  * 设计特点：
  * - 无内部能量缓存，所有能量实时透传
  * - 支持塔到塔的电网连接和递归转发
+ * 
+ * 🔥 性能优化（大幅降低服务端延迟）：
+ * 1. 反射调用缓存：静态缓存Flux/GT的Class和Method，避免每tick重复反射
+ * 2. 邻居接口缓存：缓存邻居能量源2秒，避免每tick扫描6个方向
+ * 3. 迭代替代递归：使用队列BFS遍历塔网络，消除递归栈开销和临时对象创建
  */
 public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity implements ILinkable {
+    // ========== 反射缓存（静态，所有实例共享）==========
+    // Flux Networks 反射缓存
+    private static volatile boolean FLUX_INITIALIZED = false;
+    private static Class<?> FLUX_CAP_CLASS = null;
+    private static Capability<?> FLUX_CAPABILITY = null;
+    private static Method FLUX_EXTRACT_METHOD = null;
+    private static Method FLUX_RECEIVE_METHOD = null;
+    private static Method FLUX_CAN_EXTRACT_METHOD = null;
+    private static Method FLUX_CAN_RECEIVE_METHOD = null;
+    private static Method FLUX_GET_ENERGY_STORED_METHOD = null;
+    private static Method FLUX_GET_MAX_ENERGY_STORED_METHOD = null;
+    
+    // GregTech 反射缓存
+    private static volatile boolean GT_INITIALIZED = false;
+    private static Class<?> GT_CAP_CLASS = null;
+    private static Capability<?> GT_CAPABILITY = null;
+    private static Method GT_INPUTS_ENERGY_METHOD = null;
+    private static Method GT_ACCEPT_ENERGY_METHOD = null;
+    private static Method GT_GET_INPUT_VOLTAGE_METHOD = null;
+    private static Method GT_GET_INPUT_AMPERAGE_METHOD = null;
+    private static Method GT_GET_ENERGY_CAN_BE_INSERTED_METHOD = null;
+    
+    // ========== 邻居能量源缓存 ==========
+    private static class NeighborEnergyCache {
+        Direction direction;
+        BlockPos position;
+        Object energyHandler; // 存储实际的能量接口对象
+        EnergySourceType type;
+        long lastValidatedTick;
+    }
+    
+    private enum EnergySourceType {
+        FLUX_NETWORKS,
+        LONG_ENERGY,
+        FORGE_ENERGY,
+        GREGTECH,
+        NONE
+    }
+    
+    private NeighborEnergyCache energySourceCache = null;
+    private static final int CACHE_VALIDITY_TICKS = 40; // 2秒缓存有效期
+    
+    // ========== 原有字段 ==========
     // 持久化：绑定目标集合
     private final Set<BlockPos> links = new HashSet<>();
     // 客户端渲染缓存：当前连接的目标列表（服务端同步）
@@ -70,6 +118,57 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         this.getMainNode()
             .setFlags(GridFlags.REQUIRE_CHANNEL)  // 需要频道才能连接
             .setIdlePowerUsage(0.0);  // 不消耗 AE2 网络能量
+    }
+    
+    // ========== 反射初始化方法（只在第一次使用时调用一次）==========
+    
+    /**
+     * 初始化 Flux Networks 反射缓存
+     * 使用双重检查锁定确保线程安全且只初始化一次
+     */
+    private static void initFluxReflection() {
+        if (FLUX_INITIALIZED) return;
+        synchronized (WirelessEnergyTowerBlockEntity.class) {
+            if (FLUX_INITIALIZED) return;
+            try {
+                FLUX_CAP_CLASS = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
+                java.lang.reflect.Field field = FLUX_CAP_CLASS.getField("FN_ENERGY_STORAGE");
+                FLUX_CAPABILITY = (Capability<?>) field.get(null);
+                
+                Class<?> storageClass = Class.forName("sonar.fluxnetworks.api.energy.IFNEnergyStorage");
+                FLUX_EXTRACT_METHOD = storageClass.getMethod("extractEnergyL", long.class, boolean.class);
+                FLUX_RECEIVE_METHOD = storageClass.getMethod("receiveEnergyL", long.class, boolean.class);
+                FLUX_CAN_EXTRACT_METHOD = storageClass.getMethod("canExtract");
+                FLUX_CAN_RECEIVE_METHOD = storageClass.getMethod("canReceive");
+                FLUX_GET_ENERGY_STORED_METHOD = storageClass.getMethod("getEnergyStoredL");
+                FLUX_GET_MAX_ENERGY_STORED_METHOD = storageClass.getMethod("getMaxEnergyStoredL");
+            } catch (Exception e) {
+                // Flux Networks 未安装或版本不兼容
+            }
+            FLUX_INITIALIZED = true;
+        }
+    }
+    
+    /**
+     * 初始化 GregTech 反射缓存
+     * 使用双重检查锁定确保线程安全且只初始化一次
+     */
+    private static void initGTReflection() {
+        if (GT_INITIALIZED) return;
+        synchronized (WirelessEnergyTowerBlockEntity.class) {
+            if (GT_INITIALIZED) return;
+            try {
+                GT_CAP_CLASS = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
+                java.lang.reflect.Field field = GT_CAP_CLASS.getField("CAPABILITY_ENERGY_CONTAINER");
+                GT_CAPABILITY = (Capability<?>) field.get(null);
+                
+                // 不预加载具体的容器方法，因为接口可能有多个实现
+                // 在实际使用时再获取方法
+            } catch (Exception e) {
+                // GregTech 未安装或版本不兼容
+            }
+            GT_INITIALIZED = true;
+        }
     }
     
     @Override
@@ -330,8 +429,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 在整个感应塔网络中分配能量
-     * 使用深度优先遍历，将能量分配给当前塔及其连接的所有设备和塔
+     * 🔥 优化：在整个感应塔网络中分配能量（迭代版本，替代递归）
+     * 使用广度优先遍历（队列），避免递归栈开销和临时对象创建
      * 
      * @param amount 要分配的能量
      * @param simulate 是否模拟
@@ -341,105 +440,102 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     private long distributeEnergyInNetwork(long amount, boolean simulate, Set<BlockPos> visited) {
         if (level == null || amount <= 0) return 0;
         
-        // 标记当前塔为已访问
-        if (!visited.add(this.worldPosition)) {
-            // 已经访问过，避免循环
-            return 0;
-        }
+        // 使用队列进行广度优先遍历，避免递归
+        java.util.Queue<WirelessEnergyTowerBlockEntity> towerQueue = new java.util.LinkedList<>();
+        towerQueue.add(this);
+        visited.add(this.worldPosition);
         
         long totalInserted = 0;
         
-        // 1. 先分配给当前塔的邻居设备
-        // 优先级：Flux Networks (Long) > Long接口 > 标准接口（分批）
-        for (Direction dir : Direction.values()) {
-            if (totalInserted >= amount) break;
+        // 迭代处理每个塔
+        while (!towerQueue.isEmpty() && totalInserted < amount) {
+            WirelessEnergyTowerBlockEntity currentTower = towerQueue.poll();
+            long remaining = amount - totalInserted;
             
-            BlockPos neighborPos = worldPosition.relative(dir);
-            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-            if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
-                long remaining = amount - totalInserted;
+            // 1. 先分配给当前塔的邻居设备（非塔）
+            for (Direction dir : Direction.values()) {
+                if (totalInserted >= amount) break;
                 
-                // 优先尝试Flux Networks接口（支持Long，无限制）
-                long fluxInserted = tryInsertFluxEnergy(neighborBE, dir.getOpposite(), remaining, simulate);
-                if (fluxInserted > 0) {
-                    totalInserted += fluxInserted;
-                    continue;
-                }
-                
-                // 尝试Long接口（支持超大值传输）
-                try {
-                    LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
-                    if (longCap.isPresent()) {
-                        ILongEnergyStorage storage = longCap.resolve().orElse(null);
-                        if (storage != null && storage.canReceive()) {
-                            long inserted = storage.receiveEnergyL(remaining, simulate);
-                            totalInserted += inserted;
-                            continue;
-                        }
+                BlockPos neighborPos = currentTower.worldPosition.relative(dir);
+                BlockEntity neighborBE = level.getBlockEntity(neighborPos);
+                if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                    long neighborRemaining = amount - totalInserted;
+                    
+                    // 优先尝试Flux Networks接口（支持Long，无限制）
+                    long fluxInserted = tryInsertFluxEnergy(neighborBE, dir.getOpposite(), neighborRemaining, simulate);
+                    if (fluxInserted > 0) {
+                        totalInserted += fluxInserted;
+                        continue;
                     }
-                } catch (ClassCastException e) {
-                    // 跳过不兼容的能力实现
-                }
-                
-                // 回退到标准接口（分批传输突破INT_MAX）
-                try {
-                    LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-                    if (normalCap.isPresent()) {
-                        IEnergyStorage storage = normalCap.resolve().orElse(null);
-                        if (storage != null && storage.canReceive()) {
-                            if (simulate) {
-                                // 模拟模式：单次传输，取最大可能值
-                                int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
-                                int inserted = storage.receiveEnergy(batchSize, true);
+                    
+                    // 尝试Long接口（支持超大值传输）
+                    try {
+                        LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                        if (longCap.isPresent()) {
+                            ILongEnergyStorage storage = longCap.resolve().orElse(null);
+                            if (storage != null && storage.canReceive()) {
+                                long inserted = storage.receiveEnergyL(neighborRemaining, simulate);
                                 totalInserted += inserted;
-                            } else {
-                                // 实际传输：分批传输直到完成或设备满
-                                while (remaining > 0 && totalInserted < amount) {
-                                    int batchSize = (int) Math.min(remaining, Integer.MAX_VALUE);
-                                    int inserted = storage.receiveEnergy(batchSize, false);
-                                    if (inserted == 0) break; // 设备已满
+                                continue;
+                            }
+                        }
+                    } catch (ClassCastException e) {
+                        // 跳过不兼容的能力实现
+                    }
+                    
+                    // 回退到标准接口（分批传输突破INT_MAX）
+                    try {
+                        LazyOptional<IEnergyStorage> normalCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                        if (normalCap.isPresent()) {
+                            IEnergyStorage storage = normalCap.resolve().orElse(null);
+                            if (storage != null && storage.canReceive()) {
+                                if (simulate) {
+                                    int batchSize = (int) Math.min(neighborRemaining, Integer.MAX_VALUE);
+                                    int inserted = storage.receiveEnergy(batchSize, true);
                                     totalInserted += inserted;
-                                    remaining -= inserted;
+                                } else {
+                                    long batchRemaining = neighborRemaining;
+                                    while (batchRemaining > 0 && totalInserted < amount) {
+                                        int batchSize = (int) Math.min(batchRemaining, Integer.MAX_VALUE);
+                                        int inserted = storage.receiveEnergy(batchSize, false);
+                                        if (inserted == 0) break;
+                                        totalInserted += inserted;
+                                        batchRemaining -= inserted;
+                                    }
                                 }
                             }
                         }
+                    } catch (ClassCastException e) {
+                        // 跳过不兼容的能力实现
                     }
-                } catch (ClassCastException e) {
-                    // 跳过不兼容的能力实现
                 }
             }
-        }
-        
-        // 2. 分配给当前塔连接的普通设备（非感应塔）
-        if (totalInserted < amount && !links.isEmpty()) {
-            for (BlockPos targetPos : new HashSet<>(links)) {
-                if (totalInserted >= amount) break;
-                
-                BlockEntity targetBE = level.getBlockEntity(targetPos);
-                if (targetBE == null) continue;
-                
-                // 只处理非感应塔设备
-                if (!(targetBE instanceof WirelessEnergyTowerBlockEntity)) {
-                    long remaining = amount - totalInserted;
-                    long inserted = pushEnergyToTargetDirect(targetBE, remaining, simulate);
+            
+            // 2. 分配给当前塔连接的普通设备（非感应塔）
+            if (totalInserted < amount && !currentTower.links.isEmpty()) {
+                for (BlockPos targetPos : new HashSet<>(currentTower.links)) {
+                    if (totalInserted >= amount) break;
+                    
+                    BlockEntity targetBE = level.getBlockEntity(targetPos);
+                    if (targetBE == null || targetBE instanceof WirelessEnergyTowerBlockEntity) {
+                        continue;
+                    }
+                    
+                    long targetRemaining = amount - totalInserted;
+                    long inserted = pushEnergyToTargetDirect(targetBE, targetRemaining, simulate);
                     totalInserted += inserted;
                 }
             }
-        }
-        
-        // 3. 将剩余能量递归分配给连接的其他感应塔
-        if (totalInserted < amount && !links.isEmpty()) {
-            for (BlockPos targetPos : new HashSet<>(links)) {
-                if (totalInserted >= amount) break;
-                
-                BlockEntity targetBE = level.getBlockEntity(targetPos);
-                if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
-                    // 检查是否已访问过
-                    if (!visited.contains(targetPos)) {
-                        long remaining = amount - totalInserted;
-                        // 递归分配能量到下一个塔及其网络
-                        long inserted = targetTower.distributeEnergyInNetwork(remaining, simulate, visited);
-                        totalInserted += inserted;
+            
+            // 3. 将连接的其他感应塔加入队列（非递归）
+            if (totalInserted < amount && !currentTower.links.isEmpty()) {
+                for (BlockPos targetPos : currentTower.links) {
+                    if (visited.contains(targetPos)) continue;
+                    
+                    BlockEntity targetBE = level.getBlockEntity(targetPos);
+                    if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                        visited.add(targetPos);
+                        towerQueue.add(targetTower);
                     }
                 }
             }
@@ -519,7 +615,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 尝试使用Flux Networks接口插入能量（支持Long）
+     * 🔥 优化：尝试使用Flux Networks接口插入能量（支持Long）
+     * 使用缓存的反射方法，避免重复 Class.forName 和 getMethod
      * 
      * @param target 目标方块实体
      * @param side 插入方向
@@ -528,44 +625,41 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
      * @return 实际插入的能量
      */
     private long tryInsertFluxEnergy(BlockEntity target, Direction side, long amount, boolean simulate) {
+        initFluxReflection(); // 确保已初始化
+        if (FLUX_CAPABILITY == null) return 0; // Flux Networks 未安装
+        
         try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            
-            LazyOptional<?> cap = target.getCapability(fluxCap, side);
+            LazyOptional<?> cap = target.getCapability(FLUX_CAPABILITY, side);
             if (cap.isPresent()) {
                 Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
-                    // 检查是否可以接收
-                    Method canReceiveMethod = storage.getClass().getMethod("canReceive");
-                    if ((Boolean) canReceiveMethod.invoke(storage)) {
-                        // 使用Long版本的接收方法
-                        Method receiveMethod = storage.getClass().getMethod("receiveEnergyL", long.class, boolean.class);
-                        return (Long) receiveMethod.invoke(storage, amount, simulate);
+                    // 使用缓存的 Method 对象
+                    if ((Boolean) FLUX_CAN_RECEIVE_METHOD.invoke(storage)) {
+                        return (Long) FLUX_RECEIVE_METHOD.invoke(storage, amount, simulate);
                     }
                 }
             }
         } catch (Exception ignored) {
-            // Flux Networks未安装或不兼容
+            // 调用失败，静默处理
         }
         return 0;
     }
     
     /**
-     * 直接推送能量到格雷科技设备（用于能量分配）
+     * 🔥 优化：直接推送能量到格雷科技设备（用于能量分配）
+     * 使用缓存的反射 Capability，减少重复查找
      */
     private long tryPushGTEnergyDirect(BlockEntity target, long amountFE, boolean simulate) {
+        initGTReflection(); // 确保已初始化
+        if (GT_CAPABILITY == null) return 0; // GregTech 未安装
+        
         try {
-            Class<?> gtCapClass = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
-            java.lang.reflect.Field field = gtCapClass.getField("CAPABILITY_ENERGY_CONTAINER");
-            Capability<?> gtCap = (Capability<?>) field.get(null);
-            
             for (Direction dir : Direction.values()) {
-                LazyOptional<?> cap = target.getCapability(gtCap, dir);
+                LazyOptional<?> cap = target.getCapability(GT_CAPABILITY, dir);
                 if (cap.isPresent()) {
                     Object container = cap.resolve().orElse(null);
                     if (container != null) {
+                        // 动态获取方法（不同的GT容器实现可能不同）
                         Method inputsEnergyMethod = container.getClass().getMethod("inputsEnergy", Direction.class);
                         if ((Boolean) inputsEnergyMethod.invoke(container, dir)) {
                             // FE 转换为 EU (4 FE = 1 EU)
@@ -599,19 +693,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
 
 
     /**
-     * 尝试推送能量到GregTech CEu机器
-     * 能量转换：4 FE = 1 EU
+     * 🔥 优化：尝试推送能量到GregTech CEu机器
+     * 使用缓存的 Capability，能量转换：4 FE = 1 EU
      */
     private boolean tryPushGTEnergy(BlockEntity target) {
+        initGTReflection(); // 确保已初始化
+        if (GT_CAPABILITY == null) return false; // GregTech 未安装
+        
         try {
-            // 获取格雷科技的能力
-            Class<?> gtCapClass = Class.forName("com.gregtechceu.gtceu.api.capability.forge.GTCapability");
-            java.lang.reflect.Field field = gtCapClass.getField("CAPABILITY_ENERGY_CONTAINER");
-            Capability<?> gtCap = (Capability<?>) field.get(null);
-            
             // 检查目标是否有格雷能力
             for (Direction dir : Direction.values()) {
-                LazyOptional<?> cap = target.getCapability(gtCap, dir);
+                LazyOptional<?> cap = target.getCapability(GT_CAPABILITY, dir);
                 if (cap.isPresent()) {
                     Object container = cap.resolve().orElse(null);
                     if (container != null) {
@@ -624,7 +716,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 }
             }
         } catch (Exception e) {
-            // 格雷科技未安装或版本不兼容
+            // 格雷科技调用失败
         }
         return false;
     }
@@ -789,16 +881,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 使用Flux Networks接口推送到格雷科技
+     * 🔥 优化：使用Flux Networks接口推送到格雷科技
+     * 使用缓存的 Method 对象
      */
     private boolean pushFluxToGT(Object sourceFlux, Object container, Direction side,
                                   long voltage, long amperage, long demand) {
         try {
-            Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
+            // 使用缓存的 Flux 方法
             Method acceptEnergyMethod = container.getClass().getMethod("acceptEnergyFromNetwork", Direction.class, long.class, long.class);
             
             // 尝试提取尽可能多的能量（Long.MAX_VALUE）
-            long extractedFE = (Long) extractMethod.invoke(sourceFlux, Long.MAX_VALUE, true);
+            long extractedFE = (Long) FLUX_EXTRACT_METHOD.invoke(sourceFlux, Long.MAX_VALUE, true);
             if (extractedFE == 0) return false;
             
             // FE 转换为 EU (4 FE = 1 EU)
@@ -816,9 +909,9 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             long transferredEU = actualVoltage * acceptedAmperage;
             
             if (transferredEU > 0) {
-                // 从Flux源实际提取对应的FE
+                // 从Flux源实际提取对应的FE（使用缓存的方法）
                 long actualExtractFE = transferredEU << 2;
-                extractMethod.invoke(sourceFlux, actualExtractFE, false);
+                FLUX_EXTRACT_METHOD.invoke(sourceFlux, actualExtractFE, false);
                 return true;
             }
         } catch (Exception e) {
@@ -907,57 +1000,127 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 从邻居获取Flux Networks能量接口
+     * 🔥 性能优化：获取邻居能量源（带缓存版本）
+     * 减少重复扫描6个方向和反射调用，缓存有效期2秒
      */
-    private Object getNeighborFluxEnergy() {
+    private Object getNeighborEnergySourceCached() {
         if (level == null) return null;
         
-        try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
+        long currentTick = level.getGameTime();
+        
+        // 1. 检查缓存是否有效
+        if (energySourceCache != null) {
+            long age = currentTick - energySourceCache.lastValidatedTick;
+            if (age < CACHE_VALIDITY_TICKS) {
+                // 快速验证：检查方块实体是否仍然存在
+                BlockEntity be = level.getBlockEntity(energySourceCache.position);
+                if (be != null && !be.isRemoved()) {
+                    // 缓存仍然有效
+                    return energySourceCache.energyHandler;
+                }
+            }
+            // 缓存失效，清空
+            energySourceCache = null;
+        }
+        
+        // 2. 初始化反射（如果尚未初始化）
+        initFluxReflection();
+        initGTReflection();
+        
+        // 3. 扫描邻居并建立缓存（按优先级：Flux > Long > Forge）
+        for (Direction dir : Direction.values()) {
+            BlockPos neighborPos = worldPosition.relative(dir);
+            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
+            if (neighborBE == null || neighborBE == this || neighborBE instanceof WirelessEnergyTowerBlockEntity) {
+                continue;
+            }
             
-            for (Direction dir : Direction.values()) {
-                BlockPos neighborPos = worldPosition.relative(dir);
-                BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-                // 跳过自己和其他无线能源感应塔（避免无限递归）
-                if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
-                    LazyOptional<?> cap = neighborBE.getCapability(fluxCap, dir.getOpposite());
-                    if (cap.isPresent()) {
-                        Object storage = cap.resolve().orElse(null);
-                        if (storage != null) {
-                            // 检查是否可以提取
-                            Method canExtractMethod = storage.getClass().getMethod("canExtract");
-                            if ((Boolean) canExtractMethod.invoke(storage)) {
+            // 优先级 1: Flux Networks（支持 Long，无限制）
+            if (FLUX_CAPABILITY != null) {
+                LazyOptional<?> fluxCap = neighborBE.getCapability(FLUX_CAPABILITY, dir.getOpposite());
+                if (fluxCap.isPresent()) {
+                    Object storage = fluxCap.resolve().orElse(null);
+                    if (storage != null) {
+                        try {
+                            if ((Boolean) FLUX_CAN_EXTRACT_METHOD.invoke(storage)) {
+                                energySourceCache = new NeighborEnergyCache();
+                                energySourceCache.direction = dir;
+                                energySourceCache.position = neighborPos;
+                                energySourceCache.energyHandler = storage;
+                                energySourceCache.type = EnergySourceType.FLUX_NETWORKS;
+                                energySourceCache.lastValidatedTick = currentTick;
                                 return storage;
                             }
-                        }
+                        } catch (Exception ignored) {}
                     }
                 }
             }
-        } catch (Exception ignored) {
+            
+            // 优先级 2: Long Energy（支持超大值）
+            try {
+                LazyOptional<ILongEnergyStorage> longCap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
+                if (longCap.isPresent()) {
+                    ILongEnergyStorage storage = longCap.resolve().orElse(null);
+                    if (storage != null && storage.canExtract()) {
+                        energySourceCache = new NeighborEnergyCache();
+                        energySourceCache.direction = dir;
+                        energySourceCache.position = neighborPos;
+                        energySourceCache.energyHandler = storage;
+                        energySourceCache.type = EnergySourceType.LONG_ENERGY;
+                        energySourceCache.lastValidatedTick = currentTick;
+                        return storage;
+                    }
+                }
+            } catch (Exception ignored) {}
+            
+            // 优先级 3: 标准 Forge Energy
+            try {
+                LazyOptional<IEnergyStorage> forgeCap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
+                if (forgeCap.isPresent()) {
+                    IEnergyStorage storage = forgeCap.resolve().orElse(null);
+                    if (storage != null && storage.canExtract()) {
+                        energySourceCache = new NeighborEnergyCache();
+                        energySourceCache.direction = dir;
+                        energySourceCache.position = neighborPos;
+                        energySourceCache.energyHandler = storage;
+                        energySourceCache.type = EnergySourceType.FORGE_ENERGY;
+                        energySourceCache.lastValidatedTick = currentTick;
+                        return storage;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 从邻居获取Flux Networks能量接口（使用缓存）
+     */
+    private Object getNeighborFluxEnergy() {
+        Object cached = getNeighborEnergySourceCached();
+        if (cached != null && energySourceCache != null && energySourceCache.type == EnergySourceType.FLUX_NETWORKS) {
+            return cached;
         }
         return null;
     }
     
     /**
-     * 使用Flux Networks接口推送能量
+     * 🔥 优化：使用Flux Networks接口推送能量
+     * 使用缓存的 Capability 和 Method 对象
      */
     private boolean pushFluxEnergy(Object sourceFlux, BlockEntity target) {
+        if (FLUX_CAPABILITY == null) return false; // Flux 未安装
+        
         try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            
             // 尝试获取目标的Flux接口
             Object targetFlux = null;
             for (Direction dir : Direction.values()) {
-                LazyOptional<?> cap = target.getCapability(fluxCap, dir);
+                LazyOptional<?> cap = target.getCapability(FLUX_CAPABILITY, dir);
                 if (cap.isPresent()) {
                     targetFlux = cap.resolve().orElse(null);
                     if (targetFlux != null) {
-                        Method canReceiveMethod = targetFlux.getClass().getMethod("canReceive");
-                        if ((Boolean) canReceiveMethod.invoke(targetFlux)) {
+                        if ((Boolean) FLUX_CAN_RECEIVE_METHOD.invoke(targetFlux)) {
                             break;
                         }
                         targetFlux = null;
@@ -966,18 +1129,14 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             }
             
             if (targetFlux != null) {
-                // 双方都支持Flux，使用Long传输
-                Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
-                Method receiveMethod = targetFlux.getClass().getMethod("receiveEnergyL", long.class, boolean.class);
-                
-                // 从源提取能量（模拟）
-                long extracted = (Long) extractMethod.invoke(sourceFlux, Long.MAX_VALUE, true);
+                // 双方都支持Flux，使用Long传输（使用缓存的方法）
+                long extracted = (Long) FLUX_EXTRACT_METHOD.invoke(sourceFlux, Long.MAX_VALUE, true);
                 if (extracted > 0) {
                     // 向目标插入能量（实际）
-                    long inserted = (Long) receiveMethod.invoke(targetFlux, extracted, false);
+                    long inserted = (Long) FLUX_RECEIVE_METHOD.invoke(targetFlux, extracted, false);
                     if (inserted > 0) {
                         // 从源实际提取能量
-                        extractMethod.invoke(sourceFlux, inserted, false);
+                        FLUX_EXTRACT_METHOD.invoke(sourceFlux, inserted, false);
                         return true;
                     }
                 }
@@ -1000,13 +1159,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
                 }
                 
                 if (targetEnergy != null) {
-                    // 源支持Flux Long，目标只支持int
-                    Method extractMethod = sourceFlux.getClass().getMethod("extractEnergyL", long.class, boolean.class);
-                    long extracted = (Long) extractMethod.invoke(sourceFlux, (long) Integer.MAX_VALUE, true);
+                    // 源支持Flux Long，目标只支持int（使用缓存的方法）
+                    long extracted = (Long) FLUX_EXTRACT_METHOD.invoke(sourceFlux, (long) Integer.MAX_VALUE, true);
                     if (extracted > 0) {
                         int inserted = targetEnergy.receiveEnergy((int) Math.min(extracted, Integer.MAX_VALUE), false);
                         if (inserted > 0) {
-                            extractMethod.invoke(sourceFlux, (long) inserted, false);
+                            FLUX_EXTRACT_METHOD.invoke(sourceFlux, (long) inserted, false);
                             return true;
                         }
                     }
@@ -1019,28 +1177,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 从邻居获取Long能量存储
+     * 从邻居获取Long能量存储（使用缓存）
      */
     private ILongEnergyStorage getNeighborLongEnergy() {
-        if (level == null) return null;
-        for (Direction dir : Direction.values()) {
-            BlockPos neighborPos = worldPosition.relative(dir);
-            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-            // 跳过自己和其他无线能源感应塔（避免无限递归）
-            if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
-                try {
-                    LazyOptional<ILongEnergyStorage> cap = neighborBE.getCapability(MEBFCapabilities.LONG_ENERGY_STORAGE, dir.getOpposite());
-                    if (cap.isPresent()) {
-                        ILongEnergyStorage storage = cap.resolve().orElse(null);
-                        if (storage != null && storage.canExtract()) {
-                            return storage;
-                        }
-                    }
-                } catch (ClassCastException e) {
-                    // 某些模组使用代理包装能力，跳过不兼容的实现
-                    continue;
-                }
-            }
+        Object cached = getNeighborEnergySourceCached();
+        if (cached instanceof ILongEnergyStorage) {
+            return (ILongEnergyStorage) cached;
         }
         return null;
     }
@@ -1086,28 +1228,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 从邻居获取标准Forge能量存储
+     * 从邻居获取标准Forge能量存储（使用缓存）
      */
     private IEnergyStorage getNeighborForgeEnergy() {
-        if (level == null) return null;
-        for (Direction dir : Direction.values()) {
-            BlockPos neighborPos = worldPosition.relative(dir);
-            BlockEntity neighborBE = level.getBlockEntity(neighborPos);
-            // 跳过自己和其他无线能源感应塔（避免无限递归）
-            if (neighborBE != null && neighborBE != this && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
-                try {
-                    LazyOptional<IEnergyStorage> cap = neighborBE.getCapability(ForgeCapabilities.ENERGY, dir.getOpposite());
-                    if (cap.isPresent()) {
-                        IEnergyStorage storage = cap.resolve().orElse(null);
-                        if (storage != null && storage.canExtract()) {
-                            return storage;
-                        }
-                    }
-                } catch (ClassCastException e) {
-                    // 跳过不兼容的能力实现
-                    continue;
-                }
-            }
+        Object cached = getNeighborEnergySourceCached();
+        if (cached instanceof IEnergyStorage) {
+            return (IEnergyStorage) cached;
         }
         return null;
     }
@@ -1244,81 +1370,82 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 检查是否为Flux Networks的能量能力
+     * 🔥 优化：检查是否为Flux Networks的能量能力
+     * 使用缓存的 Capability 对象
      */
     private boolean isFluxEnergyCapability(Capability<?> cap) {
-        try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            return cap == fluxCap;
-        } catch (Exception e) {
-            return false;
-        }
+        initFluxReflection(); // 确保已初始化
+        return FLUX_CAPABILITY != null && cap == FLUX_CAPABILITY;
     }
     
     /**
-     * 创建通用能量存储（同时支持标准接口和Flux Networks接口）
-     * 这样可以防止AppliedFlux等模组尝试强制转换时崩溃
+     * 🔥 优化：创建通用能量存储（同时支持标准接口和Flux Networks接口）
+     * 使用缓存的反射结果，这样可以防止AppliedFlux等模组尝试强制转换时崩溃
      */
     private Object createUniversalEnergyStorage(Direction side) {
         TowerEnergyStorage baseStorage = new TowerEnergyStorage(side);
         
+        initFluxReflection(); // 确保已初始化
+        
         // 检查是否安装了Flux Networks
-        try {
-            Class<?> fluxInterface = Class.forName("sonar.fluxnetworks.api.energy.IFNEnergyStorage");
-            
-            // 创建动态代理，同时实现IEnergyStorage、ILongEnergyStorage和IFNEnergyStorage
-            return java.lang.reflect.Proxy.newProxyInstance(
-                fluxInterface.getClassLoader(),
-                new Class<?>[]{IEnergyStorage.class, ILongEnergyStorage.class, fluxInterface},
-                (proxy, method, args) -> {
-                    String methodName = method.getName();
-                    
-                    // 处理Flux Networks接口方法
-                    switch (methodName) {
-                        case "extractEnergyL":
-                            if (args != null && args.length >= 2) {
-                                return baseStorage.extractEnergyL((Long) args[0], (Boolean) args[1]);
-                            }
-                            return 0L;
-                        case "receiveEnergyL":
-                            if (args != null && args.length >= 2) {
-                                return baseStorage.receiveEnergyL((Long) args[0], (Boolean) args[1]);
-                            }
-                            return 0L;
-                        case "getEnergyStoredL":
-                            return baseStorage.getEnergyStoredL();
-                        case "getMaxEnergyStoredL":
-                            return baseStorage.getMaxEnergyStoredL();
-                        case "canExtract":
-                            return baseStorage.canExtract();
-                        case "canReceive":
-                            return baseStorage.canReceive();
-                        // 标准接口方法
-                        case "extractEnergy":
-                            if (args != null && args.length >= 2) {
-                                return baseStorage.extractEnergy((Integer) args[0], (Boolean) args[1]);
-                            }
-                            return 0;
-                        case "receiveEnergy":
-                            if (args != null && args.length >= 2) {
-                                return baseStorage.receiveEnergy((Integer) args[0], (Boolean) args[1]);
-                            }
-                            return 0;
-                        case "getEnergyStored":
-                            return baseStorage.getEnergyStored();
-                        case "getMaxEnergyStored":
-                            return baseStorage.getMaxEnergyStored();
-                        default:
-                            return null;
+        if (FLUX_CAPABILITY != null) {
+            try {
+                Class<?> fluxInterface = Class.forName("sonar.fluxnetworks.api.energy.IFNEnergyStorage");
+                
+                // 创建动态代理，同时实现IEnergyStorage、ILongEnergyStorage和IFNEnergyStorage
+                return java.lang.reflect.Proxy.newProxyInstance(
+                    fluxInterface.getClassLoader(),
+                    new Class<?>[]{IEnergyStorage.class, ILongEnergyStorage.class, fluxInterface},
+                    (proxy, method, args) -> {
+                        String methodName = method.getName();
+                        
+                        // 处理Flux Networks接口方法
+                        switch (methodName) {
+                            case "extractEnergyL":
+                                if (args != null && args.length >= 2) {
+                                    return baseStorage.extractEnergyL((Long) args[0], (Boolean) args[1]);
+                                }
+                                return 0L;
+                            case "receiveEnergyL":
+                                if (args != null && args.length >= 2) {
+                                    return baseStorage.receiveEnergyL((Long) args[0], (Boolean) args[1]);
+                                }
+                                return 0L;
+                            case "getEnergyStoredL":
+                                return baseStorage.getEnergyStoredL();
+                            case "getMaxEnergyStoredL":
+                                return baseStorage.getMaxEnergyStoredL();
+                            case "canExtract":
+                                return baseStorage.canExtract();
+                            case "canReceive":
+                                return baseStorage.canReceive();
+                            // 标准接口方法
+                            case "extractEnergy":
+                                if (args != null && args.length >= 2) {
+                                    return baseStorage.extractEnergy((Integer) args[0], (Boolean) args[1]);
+                                }
+                                return 0;
+                            case "receiveEnergy":
+                                if (args != null && args.length >= 2) {
+                                    return baseStorage.receiveEnergy((Integer) args[0], (Boolean) args[1]);
+                                }
+                                return 0;
+                            case "getEnergyStored":
+                                return baseStorage.getEnergyStored();
+                            case "getMaxEnergyStored":
+                                return baseStorage.getMaxEnergyStored();
+                            default:
+                                return null;
+                        }
                     }
-                }
-            );
-        } catch (Exception e) {
-            // Flux Networks未安装，返回基础存储
-            return baseStorage;
+                );
+            } catch (Exception e) {
+                // Flux Networks 代理创建失败，返回基础存储
+            }
         }
+        
+        // Flux Networks未安装，返回基础存储
+        return baseStorage;
     }
     
     /**
@@ -1492,20 +1619,18 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 尝试使用Flux Networks接口提取能量
+     * 🔥 优化：尝试使用Flux Networks接口提取能量
+     * 使用缓存的 Capability 和 Method 对象
      */
     private long tryExtractFluxEnergy(BlockEntity be, Direction side, long maxExtract, boolean simulate) {
+        if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
+        
         try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            
-            LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
+            LazyOptional<?> cap = be.getCapability(FLUX_CAPABILITY, side.getOpposite());
             if (cap.isPresent()) {
                 Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
-                    Method extractMethod = storage.getClass().getMethod("extractEnergyL", long.class, boolean.class);
-                    return (Long) extractMethod.invoke(storage, maxExtract, simulate);
+                    return (Long) FLUX_EXTRACT_METHOD.invoke(storage, maxExtract, simulate);
                 }
             }
         } catch (Exception ignored) {
@@ -1577,20 +1702,18 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 尝试获取Flux Networks的能量存储量
+     * 🔥 优化：尝试获取Flux Networks的能量存储量
+     * 使用缓存的 Capability 和 Method 对象
      */
     private long tryGetFluxEnergyStored(BlockEntity be, Direction side) {
+        if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
+        
         try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            
-            LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
+            LazyOptional<?> cap = be.getCapability(FLUX_CAPABILITY, side.getOpposite());
             if (cap.isPresent()) {
                 Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
-                    Method method = storage.getClass().getMethod("getEnergyStoredL");
-                    return (Long) method.invoke(storage);
+                    return (Long) FLUX_GET_ENERGY_STORED_METHOD.invoke(storage);
                 }
             }
         } catch (Exception ignored) {
@@ -1599,20 +1722,18 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 尝试获取Flux Networks的最大能量存储量
+     * 🔥 优化：尝试获取Flux Networks的最大能量存储量
+     * 使用缓存的 Capability 和 Method 对象
      */
     private long tryGetFluxMaxEnergyStored(BlockEntity be, Direction side) {
+        if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
+        
         try {
-            Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
-            java.lang.reflect.Field field = fluxCapClass.getField("FN_ENERGY_STORAGE");
-            Capability<?> fluxCap = (Capability<?>) field.get(null);
-            
-            LazyOptional<?> cap = be.getCapability(fluxCap, side.getOpposite());
+            LazyOptional<?> cap = be.getCapability(FLUX_CAPABILITY, side.getOpposite());
             if (cap.isPresent()) {
                 Object storage = cap.resolve().orElse(null);
                 if (storage != null) {
-                    Method method = storage.getClass().getMethod("getMaxEnergyStoredL");
-                    return (Long) method.invoke(storage);
+                    return (Long) FLUX_GET_MAX_ENERGY_STORED_METHOD.invoke(storage);
                 }
             }
         } catch (Exception ignored) {
