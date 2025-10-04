@@ -164,22 +164,15 @@ public class WirelessEnergyTowerBlock extends Block implements EntityBlock {
         return null;
     }
 
+    // ========== Ticker 已移除 ==========
+    // 能源塔现在由 WirelessEnergyNetwork 全局管理器统一处理
+    // 这是性能优化的关键：集中式管理代替分散式 tick
+    // 对玩家完全透明，功能不变
+    
     @Nullable
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        // 只在底部tick
-        if (state.getValue(PART) != 0) {
-            return null;
-        }
-        
-        return (lvl, pos, st, be) -> {
-            if (be instanceof WirelessEnergyTowerBlockEntity tower) {
-                if (lvl.isClientSide) {
-                    WirelessEnergyTowerBlockEntity.clientTick(lvl, pos, st, tower);
-                } else {
-                    WirelessEnergyTowerBlockEntity.serverTick(lvl, pos, st, tower);
-                }
-            }
-        };
+        // 不再需要 ticker - 全局管理器会处理所有能量传输
+        return null;
     }
 } 

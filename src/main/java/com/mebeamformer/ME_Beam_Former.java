@@ -42,6 +42,8 @@ import com.mebeamformer.item.LaserBindingTool;
 import com.mebeamformer.block.WirelessEnergyTowerBlock;
 import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
 import com.mebeamformer.client.render.WirelessEnergyTowerRenderer;
+import com.mebeamformer.block.EnergyNetworkMonitorBlock;
+import com.mebeamformer.blockentity.EnergyNetworkMonitorBlockEntity;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -114,6 +116,19 @@ public class ME_Beam_Former {
     public static final RegistryObject<BlockEntityType<WirelessEnergyTowerBlockEntity>> WIRELESS_ENERGY_TOWER_BE = BLOCK_ENTITIES.register("wireless_energy_tower",
             () -> BlockEntityType.Builder.of(WirelessEnergyTowerBlockEntity::new, WIRELESS_ENERGY_TOWER_BLOCK.get()).build(null));
 
+    // Energy Network Monitor Block + Item + BlockEntity (用于性能调试)
+    public static final RegistryObject<Block> ENERGY_NETWORK_MONITOR_BLOCK = MY_BLOCKS.register("energy_network_monitor",
+            () -> new EnergyNetworkMonitorBlock(BlockBehaviour.Properties
+                    .of()
+                    .mapColor(MapColor.METAL)
+                    .strength(1.5f)
+                    .sound(SoundType.METAL)
+            ));
+    public static final RegistryObject<Item> ENERGY_NETWORK_MONITOR_ITEM = ITEMS.register("energy_network_monitor",
+            () -> new BlockItem(ENERGY_NETWORK_MONITOR_BLOCK.get(), new Item.Properties()));
+    public static final RegistryObject<BlockEntityType<EnergyNetworkMonitorBlockEntity>> ENERGY_NETWORK_MONITOR_BE = BLOCK_ENTITIES.register("energy_network_monitor",
+            () -> BlockEntityType.Builder.of(EnergyNetworkMonitorBlockEntity::new, ENERGY_NETWORK_MONITOR_BLOCK.get()).build(null));
+
     // 创造物品栏页签：使用"光束器方块"作为图标，展示本模组核心内容
     public static final RegistryObject<CreativeModeTab> EXAMPLE_TAB = CREATIVE_MODE_TABS.register("example_tab", () -> CreativeModeTab.builder()
             .withTabsBefore(CreativeModeTabs.COMBAT)
@@ -126,6 +141,7 @@ public class ME_Beam_Former {
                 output.accept(OMNI_BEAM_FORMER_BLOCK_ITEM.get());
                 output.accept(LASER_BINDING_TOOL.get());
                 output.accept(WIRELESS_ENERGY_TOWER_ITEM.get());
+                output.accept(ENERGY_NETWORK_MONITOR_ITEM.get()); // 性能监控方块（调试用）
             }).build());
 
     public ME_Beam_Former() {
