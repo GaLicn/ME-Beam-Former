@@ -103,9 +103,13 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public IPartModel getStaticModels() {
-        // 通电激活且已配对 -> BEAMING；通电激活未配对 -> ON；否则 OFF
+        // 已配对（有光束）-> BEAMING；通电但未配对 -> ON；否则 OFF
+        // 注意：即使Part未激活（如缺频道），只要有光束连接就显示BEAMING状态
+        if (beamLength > 0 || other != null) {
+            return MODEL_BEAMING;
+        }
         if (this.isActive()) {
-            return (this.other != null) ? MODEL_BEAMING : MODEL_ON;
+            return MODEL_ON;
         }
         return MODEL_OFF;
     }
@@ -130,58 +134,74 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         boolean found = false;
         BeamFormerPart target = null;
 
+        // 总是完整扫描路径，即使已连接也要检查是否有新的阻挡
         for (int i = 0; i < 32; i++) {
             cur = cur.relative(facing);
             BlockState state = level.getBlockState(cur);
 
-            // 阻挡判断：不可遮挡方块则阻挡
-            if (state.canOcclude() && !state.isAir()) {
-                // 碰到实体宿主也要进一步判断是否 Part 本身
-                BlockEntity otherBe = level.getBlockEntity(cur);
-                if (otherBe instanceof IPartHost ph) {
-                    var opposite = facing.getOpposite();
-                    var p = ph.getPart(opposite);
-                    if (p instanceof BeamFormerPart bf) {
-                        target = bf;
-                        found = true;
-                        break;
-                    }
-                }
-                // 被遮挡，断开
-                disconnect(null);
-                return TickRateModulation.SLOWER;
-            }
-
-            // 非遮挡，记录路径并继续
-            path.add(cur);
-
-            // 检查是否遇到线缆总线带有对向 Part
+            // 检查方块实体，看是否有BeamFormerPart
             BlockEntity otherBe = level.getBlockEntity(cur);
+            boolean hasBeamFormerPart = false;
+            
             if (otherBe instanceof IPartHost ph) {
+                // 检查对向是否有BeamFormerPart - 如果有就是目标
                 var opposite = facing.getOpposite();
                 var p = ph.getPart(opposite);
                 if (p instanceof BeamFormerPart bf) {
                     target = bf;
                     found = true;
-                    break;
+                    // 不要break，继续检查路径完整性
                 }
-                // 不要穿过另一个同向的 BeamFormer
-                if (ph.getPart(facing) instanceof BeamFormerPart) {
-                    disconnect(null);
-                    return TickRateModulation.SLOWER;
+                
+                // 检查是否有任何BeamFormerPart（用于判断是否允许穿过）
+                for (Direction d : Direction.values()) {
+                    if (ph.getPart(d) instanceof BeamFormerPart) {
+                        hasBeamFormerPart = true;
+                        break;
+                    }
                 }
+            }
+            
+            // 阻挡判断：可遮挡的实体方块
+            if (state.canOcclude() && !state.isAir()) {
+                // 如果这个位置有BeamFormerPart（线缆总线），允许光束穿过
+                if (hasBeamFormerPart) {
+                    path.add(cur);
+                    // 如果已经找到目标且就是这个位置，结束扫描
+                    if (found && target != null && otherBe == target.getBlockEntity()) {
+                        break;
+                    }
+                    continue;
+                }
+                // 否则被实体方块阻挡，断开连接
+                disconnect(null);
+                return TickRateModulation.SLOWER;
+            }
+
+            // 非遮挡方块，记录路径并继续
+            path.add(cur);
+            
+            // 如果已经找到目标，结束扫描
+            if (found && target != null) {
+                break;
             }
         }
 
         if (found && target != null) {
-            // 已连接且仍然指向对方，直接休眠
+            // 已连接且仍然指向对方，更新路径长度
             if (this.other == target && target.other == this && this.connection != null) {
-                return TickRateModulation.SLEEP;
+                // 更新光束长度（路径可能因为中间添加/移除了BeamFormerPart而变化）
+                int oldLen = this.beamLength;
+                this.beamLength = path.size();
+                if (oldLen != this.beamLength) {
+                    this.getHost().markForUpdate();
+                }
+                return TickRateModulation.SLOWER;
             }
 
             // 否则尝试建立连接
             tryConnect(target, path);
-            return TickRateModulation.SLEEP;
+            return TickRateModulation.SLOWER;
         }
 
         // 未找到对端，若原本有连接则断开
@@ -206,8 +226,24 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     public int getBeamLength() { return beamLength; }
     public boolean shouldRenderBeam() {
-        // 邻接时 beamLength 可能为 0，但如果已连接，也允许渲染一个最小长度
-        return !hideBeam && (beamLength > 0 || other != null) && isActive();
+        // 渲染光束的条件：
+        // 1. 没有隐藏光束
+        // 2. 有光束长度或有连接的目标
+        // 3. 本端有电（isPowered）
+        // 4. 如果有连接目标，目标也要有电
+        // 注意：不检查频道（isMissingChannel），因为频道不足不应影响物理连接的可见性
+        if (hideBeam) return false;
+        if (beamLength <= 0 && other == null) return false;
+        
+        // 本端必须有电
+        if (!isPowered()) return false;
+        
+        // 如果有连接目标，目标也必须有电
+        if (other != null && !other.isPowered()) {
+            return false;
+        }
+        
+        return true;
     }
 
     @Override
@@ -227,14 +263,16 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
                               net.minecraft.client.renderer.MultiBufferSource buffers,
                               int combinedLightIn, int combinedOverlayIn) {
         if (!shouldRenderBeam()) return;
-        // 客户端只读路径校验：若中途被方块阻挡，则不渲染（避免在下一次服务端断开前出现穿模）
+        
+        // 客户端路径检查：检测实体方块阻挡，但允许路径中有其他BeamFormerPart
         var be = getBlockEntity();
         Level levelRD = be != null ? be.getLevel() : null;
         Direction dirRD = getSide();
-        int checkLen = this.beamLength > 0 ? this.beamLength : 1; // 邻接时至少检查 1 格
+        int checkLen = this.beamLength > 0 ? this.beamLength : 1;
         if (levelRD != null && !isPathClearForRender(levelRD, be.getBlockPos(), dirRD, checkLen)) {
             return;
         }
+        
         // 颜色来自线缆颜色最鲜艳变体
         AEColor color = getHost().getColor();
         float scale = 255f;
@@ -250,33 +288,35 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     /**
      * 客户端渲染前的路径清晰度检查（只读，不修改状态）。
-     * 与服务端 {@link #tickingRequest} 中的阻挡规则保持一致：
-     * - 遇到可遮挡且非空气的方块：若不是末端且不是对向的 BeamFormerPart，则视为阻挡。
-     * - 不允许穿过另一个同向的 BeamFormer。
+     * 允许光束穿过其他BeamFormerPart，但阻挡实体方块。
      */
     private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {
         BlockPos cur = start;
         for (int i = 0; i < length; i++) {
             cur = cur.relative(dir);
             BlockState state = level.getBlockState(cur);
+            
+            // 如果是可遮挡的实体方块
             if (state.canOcclude() && !state.isAir()) {
                 BlockEntity otherBe = level.getBlockEntity(cur);
+                
+                // 如果是PartHost，检查是否有BeamFormerPart
                 if (otherBe instanceof IPartHost ph) {
-                    var opposite = dir.getOpposite();
-                    var p = ph.getPart(opposite);
-                    // 仅当正好是末端并且对向为 BeamFormerPart 时放行
-                    if (i == length - 1 && p instanceof BeamFormerPart) {
-                        return true;
+                    boolean hasBeamFormerPart = false;
+                    for (Direction d : Direction.values()) {
+                        if (ph.getPart(d) instanceof BeamFormerPart) {
+                            hasBeamFormerPart = true;
+                            break;
+                        }
+                    }
+                    // 如果有BeamFormerPart，允许光束穿过
+                    if (hasBeamFormerPart) {
+                        continue;
                     }
                 }
+                
+                // 其他实体方块阻挡光束
                 return false;
-            }
-            BlockEntity otherBe = level.getBlockEntity(cur);
-            if (otherBe instanceof IPartHost ph) {
-                // 不允许穿过另一个同向的 BeamFormer
-                if (ph.getPart(dir) instanceof BeamFormerPart) {
-                    return false;
-                }
             }
         }
         return true;
