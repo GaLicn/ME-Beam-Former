@@ -26,7 +26,7 @@ public class Config
 
     private static final ForgeConfigSpec.BooleanValue ALWAYS_RENDER_BEAMS = BUILDER
             .comment("Whether to always render energy tower beams. When true, beams are always visible. When false, beams are only visible when holding the laser binding tool.")
-            .define("alwaysRenderBeams", true);
+            .define("alwaysRenderBeams", false);
 
     private static final ForgeConfigSpec.IntValue MAGIC_NUMBER = BUILDER
             .comment("A magic number")
