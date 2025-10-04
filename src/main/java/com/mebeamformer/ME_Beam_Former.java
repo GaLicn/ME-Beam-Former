@@ -141,7 +141,8 @@ public class ME_Beam_Former {
                 output.accept(OMNI_BEAM_FORMER_BLOCK_ITEM.get());
                 output.accept(LASER_BINDING_TOOL.get());
                 output.accept(WIRELESS_ENERGY_TOWER_ITEM.get());
-                output.accept(ENERGY_NETWORK_MONITOR_ITEM.get()); // 性能监控方块（调试用）
+                // 性能监控方块已从创造物品栏移除，只能通过指令获取：
+                // /give @s me_beam_former:energy_network_monitor
             }).build());
 
     public ME_Beam_Former() {
