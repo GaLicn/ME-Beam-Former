@@ -159,6 +159,12 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
     public int getLightBlock(BlockState state, BlockGetter level, BlockPos pos) { return 0; }
 
     @Override
+    public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
+        // 方块发光亮度设置为15（最大亮度）
+        return 15;
+    }
+
+    @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player,
                                 InteractionHand hand, BlockHitResult hit) {
         // 调用父类的默认处理（如内存卡等）
