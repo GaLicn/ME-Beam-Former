@@ -20,7 +20,24 @@ import java.util.concurrent.ConcurrentHashMap;
  * - 批量传输：一次性处理所有能量传输，避免重复查询
  * - 高性能：减少90%的服务端调用次数
  * 
- * 对玩家透明：
+ * 🎯 智能双轨工作模式：
+ * 
+ * 【模式1：自动运行】（默认，不需要监控方块）
+ * - 全局事件系统自动触发能量传输
+ * - 开箱即用，无需额外设置
+ * - 性能检测工具看不到延迟（在事件系统中）
+ * 
+ * 【模式2：监控模式】（放置监控方块后自动激活）
+ * - 监控方块优先执行能量传输
+ * - 全局事件检测到已执行，自动跳过（防重复）
+ * - 性能检测工具显示监控方块延迟 = 所有塔的真实开销 ✅
+ * 
+ * 📊 性能可视化：
+ * - 获取监控方块：/give @s me_beam_former:energy_network_monitor
+ * - 放置即可看到性能，破坏后恢复自动模式
+ * - 监控方块覆盖所有维度的所有已加载能源塔
+ * 
+ * 对玩家完全透明：
  * - 功能完全不变
  * - 存档完全兼容
  * - 只是内部实现优化
@@ -36,6 +53,10 @@ public class WirelessEnergyNetwork {
     
     // 维度分组的塔列表（用于优化跨维度传输）
     private final Map<Level, List<WirelessEnergyTowerBlockEntity>> towersByLevel = new ConcurrentHashMap<>();
+    
+    // ========== 防重复执行机制 ==========
+    private long lastExecutedTick = -1;      // 上次执行能量传输的游戏时间
+    private boolean executedByMonitor = false; // 标记本次 tick 是否已由监控方块执行
     
     private WirelessEnergyNetwork() {
     }
@@ -55,14 +76,17 @@ public class WirelessEnergyNetwork {
     }
     
     /**
-     * 服务端 Tick 事件 - 统一处理所有能源塔的能量传输
-     * 这是整个系统的核心，每个服务端 tick 执行一次
+     * 🔥 服务端 Tick 事件 - 自动执行能量传输
+     * 
+     * 智能防重复机制：
+     * - 如果监控方块已经执行过，跳过（避免重复）
+     * - 如果没有监控方块，自动执行（确保功能正常）
      */
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         // 在 tick 结束阶段执行，确保所有方块实体都已更新
         if (event.phase == TickEvent.Phase.END) {
-            getInstance().tick();
+            getInstance().tickIfNeeded(false); // false = 由事件触发
         }
     }
     
@@ -127,6 +151,33 @@ public class WirelessEnergyNetwork {
     }
     
     /**
+     * 🔥 智能 Tick 调度 - 防止同一 tick 内重复执行
+     * 
+     * @param fromMonitor 是否由监控方块触发
+     */
+    private void tickIfNeeded(boolean fromMonitor) {
+        if (registeredTowers.isEmpty()) {
+            return;
+        }
+        
+        // 获取当前游戏时间（用于判断是否在同一个 tick）
+        long currentTick = getCurrentGameTime();
+        
+        // 检查是否在同一个 tick 内已经执行过
+        if (currentTick == lastExecutedTick) {
+            // 已经执行过，跳过
+            return;
+        }
+        
+        // 标记当前 tick 已执行
+        lastExecutedTick = currentTick;
+        executedByMonitor = fromMonitor;
+        
+        // 执行实际的能量传输
+        tick();
+    }
+    
+    /**
      * 核心 Tick 逻辑 - 批量处理所有能源塔的能量传输
      * 
      * 优化策略：
@@ -151,6 +202,18 @@ public class WirelessEnergyNetwork {
             // 批量处理当前维度的所有能源塔
             processTowersInLevel(level, towers);
         }
+    }
+    
+    /**
+     * 获取当前游戏时间（从任意已注册的塔获取）
+     */
+    private long getCurrentGameTime() {
+        for (WirelessEnergyTowerBlockEntity tower : registeredTowers.values()) {
+            if (tower.getLevel() != null) {
+                return tower.getLevel().getGameTime();
+            }
+        }
+        return System.currentTimeMillis() / 50; // 后备方案
     }
     
     /**
@@ -236,28 +299,20 @@ public class WirelessEnergyNetwork {
     }
     
     /**
-     * 手动触发一次性能统计（供监控方块使用）
-     * 这会模拟一次完整的 tick 过程，让性能检测模组能够捕获延迟
+     * 🔥 手动触发能量传输（供监控方块使用）
+     * 
+     * 智能机制：
+     * - 优先执行：监控方块的 tick 先于全局事件
+     * - 防重复：如果本 tick 已执行过，跳过
+     * - 后备：如果没有监控方块，全局事件会自动执行
+     * 
+     * 性能可视化：
+     * - 监控方块显示的延迟 = 所有塔的真实传输开销
+     * - 包含所有维度的所有已加载能源塔
      */
     public void triggerPerformanceCheck() {
-        if (registeredTowers.isEmpty()) {
-            return;
-        }
-        
-        // 这会让性能检测模组看到延迟
-        // 实际的能量传输已经由事件系统处理，这里只是为了性能监控
-        for (Map.Entry<Level, List<WirelessEnergyTowerBlockEntity>> entry : towersByLevel.entrySet()) {
-            List<WirelessEnergyTowerBlockEntity> towers = entry.getValue();
-            if (!towers.isEmpty()) {
-                // 简单遍历一遍，让性能检测工具能看到开销
-                for (WirelessEnergyTowerBlockEntity tower : towers) {
-                    if (!tower.isRemoved()) {
-                        // 获取连接数量（轻量级操作）
-                        tower.getLinks().size();
-                    }
-                }
-            }
-        }
+        // 调用智能调度，标记为"由监控方块触发"
+        tickIfNeeded(true);
     }
 }
 
