@@ -1256,6 +1256,13 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /**
+     * 检查是否有绑定的目标（用于GT能量适配器）
+     */
+    public boolean hasTargets() {
+        return !links.isEmpty();
+    }
+    
+    /**
      * 获取客户端连接列表（用于渲染）
      */
     public List<BlockPos> getClientLinks() {

@@ -148,6 +148,9 @@ public class MEBeamFormer {
     public MEBeamFormer(IEventBus modEventBus, ModContainer modContainer) {
         // 生命周期：通用阶段回调
         modEventBus.addListener(this::commonSetup);
+        
+        // 注册Capability（MOD bus事件）
+        modEventBus.addListener(MEBeamFormer::registerCapabilities);
 
         // 注册各类注册表
         BLOCKS.register(modEventBus);
@@ -193,10 +196,8 @@ public class MEBeamFormer {
     }
     
     // 注册Capabilities（NeoForge 1.21.1新方式）
-    @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD)
-    public static class CapabilityRegistration {
-        @SubscribeEvent
-        public static void registerCapabilities(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
+    // 注意：RegisterCapabilitiesEvent 在 MOD bus 上触发，所以我们在构造函数中直接监听
+    private static void registerCapabilities(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
             // 注册AE2网络节点能力（让线缆能够识别和连接我们的方块）
             // 这是AE2线缆连接的关键能力！
             event.registerBlockEntity(
@@ -244,9 +245,31 @@ public class MEBeamFormer {
             } catch (Exception e) {
                 LOGGER.info("ℹ️ Flux Networks not installed, Long Energy capability not registered");
             }
-        }
+            
+            // 🔥🔥🔥 注册GregTech CEu能量能力（支持电压/电流系统，4 FE = 1 EU）
+            // 使用动态代理实现软依赖，无需编译时依赖GregTech
+            try {
+                if (com.mebeamformer.energy.GTEnergyAdapter.isGTAvailable()) {
+                    Object gtCap = com.mebeamformer.energy.GTEnergyAdapter.getGTCapability();
+                    if (gtCap != null) {
+                        @SuppressWarnings("unchecked")
+                        net.neoforged.neoforge.capabilities.BlockCapability<Object, net.minecraft.core.Direction> gtCapability = 
+                            (net.neoforged.neoforge.capabilities.BlockCapability<Object, net.minecraft.core.Direction>) gtCap;
+                        
+                        event.registerBlockEntity(
+                            gtCapability,
+                            WIRELESS_ENERGY_TOWER_BE.get(),
+                            (blockEntity, context) -> com.mebeamformer.energy.GTEnergyAdapter.createGTAdapter(
+                                (com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity) blockEntity
+                            )
+                        );
+                        LOGGER.info("✅ Successfully registered GregTech CEu Energy capability for Wireless Energy Tower! (4 FE = 1 EU)");
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.info("ℹ️ GregTech CEu not installed, GT energy capability not registered: {}", e.getMessage());
+            }
     }
-
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
     @EventBusSubscriber(modid = MODID, value = Dist.CLIENT)
