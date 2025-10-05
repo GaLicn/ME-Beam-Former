@@ -193,13 +193,32 @@ public class MEBeamFormer {
     }
     
     // 注册Capabilities（NeoForge 1.21.1新方式）
-    @EventBusSubscriber(modid = MODID)
+    @EventBusSubscriber(modid = MODID, bus = EventBusSubscriber.Bus.MOD)
     public static class CapabilityRegistration {
         @SubscribeEvent
         public static void registerCapabilities(net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent event) {
-            // 注册WirelessEnergyTowerBlockEntity的能量Capability提供者
-            // TODO: 需要为WirelessEnergyTowerBlockEntity实现能量接口注册
-            // event.registerBlockEntity(...)
+            // 注册AE2网络节点能力（让线缆能够识别和连接我们的方块）
+            // 这是AE2线缆连接的关键能力！
+            event.registerBlockEntity(
+                appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                BEAM_FORMER_BE.get(),
+                (blockEntity, context) -> blockEntity
+            );
+            
+            event.registerBlockEntity(
+                appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                OMNI_BEAM_FORMER_BE.get(),
+                (blockEntity, context) -> blockEntity
+            );
+            
+            event.registerBlockEntity(
+                appeng.api.AECapabilities.IN_WORLD_GRID_NODE_HOST,
+                WIRELESS_ENERGY_TOWER_BE.get(),
+                (blockEntity, context) -> blockEntity
+            );
+            
+            // 注册能量存储能力（用于无线能源感应塔）
+            // event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, WIRELESS_ENERGY_TOWER_BE.get(), ...);
         }
     }
 

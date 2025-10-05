@@ -34,6 +34,7 @@ import java.util.Map;
 
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import appeng.block.AEBaseEntityBlock;
+import net.minecraft.world.entity.LivingEntity;
 
 public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEntity> {
     public static final DirectionProperty FACING = BlockStateProperties.FACING;
@@ -170,5 +171,17 @@ public class OmniBeamFormerBlock extends AEBaseEntityBlock<OmniBeamFormerBlockEn
                                 InteractionHand hand, BlockHitResult hit) {
         // 调用父类的默认处理（如内存卡等）
         return super.useItemOn(heldItem, state, level, pos, player, hand, hit);
+    }
+
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        // 通知相邻方块，让线缆可以连接
+        if (!level.isClientSide()) {
+            level.blockUpdated(pos, this);
+            for (Direction dir : Direction.values()) {
+                level.updateNeighborsAt(pos.relative(dir), this);
+            }
+        }
     }
 }

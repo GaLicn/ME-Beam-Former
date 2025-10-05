@@ -87,6 +87,14 @@ public class WirelessEnergyTowerBlock extends Block implements EntityBlock {
         // 放置中部和顶部
         level.setBlock(pos.above(), state.setValue(PART, 1), 3);
         level.setBlock(pos.above(2), state.setValue(PART, 2), 3);
+        
+        // 通知相邻方块，让线缆可以连接（仅底部方块需要通知，因为只有底部有BlockEntity）
+        if (!level.isClientSide() && state.getValue(PART) == 0) {
+            level.blockUpdated(pos, this);
+            for (Direction dir : Direction.values()) {
+                level.updateNeighborsAt(pos.relative(dir), this);
+            }
+        }
     }
 
     @Override

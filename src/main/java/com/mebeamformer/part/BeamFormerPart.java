@@ -253,11 +253,11 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         return shouldRenderBeam() ? 15 : 0;
     }
 
-    // NeoForge 1.21.1: requireDynamicRender已移除
-    // @Override
-    // public boolean requireDynamicRender() {
-    //     return true;
-    // }
+    @Override
+    public boolean requireDynamicRender() {
+        // 始终启用动态渲染以显示光束
+        return true;
+    }
 
     @Override
     public void renderDynamic(float partialTicks, com.mojang.blaze3d.vertex.PoseStack poseStack,
