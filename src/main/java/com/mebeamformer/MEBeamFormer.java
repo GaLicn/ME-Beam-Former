@@ -217,8 +217,33 @@ public class MEBeamFormer {
                 (blockEntity, context) -> blockEntity
             );
             
-            // 注册能量存储能力（用于无线能源感应塔）
-            // event.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, WIRELESS_ENERGY_TOWER_BE.get(), ...);
+            // 🔥 注册标准能量存储能力（用于无线能源感应塔）
+            event.registerBlockEntity(
+                net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
+                WIRELESS_ENERGY_TOWER_BE.get(),
+                (blockEntity, context) -> blockEntity // 塔自身实现IEnergyStorage
+            );
+            
+            // 🔥🔥 注册Flux Networks Long能量能力（突破Integer.MAX_VALUE限制！）
+            // 使用动态代理实现软依赖，无需编译时依赖Flux Networks
+            try {
+                Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
+                java.lang.reflect.Field blockCapField = fluxCapClass.getField("BLOCK");
+                @SuppressWarnings("unchecked")
+                net.neoforged.neoforge.capabilities.BlockCapability<Object, net.minecraft.core.Direction> fluxCap = 
+                    (net.neoforged.neoforge.capabilities.BlockCapability<Object, net.minecraft.core.Direction>) blockCapField.get(null);
+                
+                event.registerBlockEntity(
+                    fluxCap,
+                    WIRELESS_ENERGY_TOWER_BE.get(),
+                    (blockEntity, context) -> com.mebeamformer.energy.FluxEnergyAdapter.createFluxAdapter(
+                        (com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity) blockEntity
+                    )
+                );
+                LOGGER.info("✅ Successfully registered Flux Networks Long Energy capability for Wireless Energy Tower!");
+            } catch (Exception e) {
+                LOGGER.info("ℹ️ Flux Networks not installed, Long Energy capability not registered");
+            }
         }
     }
 
