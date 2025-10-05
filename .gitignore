@@ -26,3 +26,6 @@ run-data
 repo
 
 othermods
+/.gitattributes
+/README.md
+/TEMPLATE_LICENSE.txt
