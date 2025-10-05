@@ -221,8 +221,9 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
      * 主动推送能量到目标机器（供全局管理器调用）
      * 从能量源提取能量，然后推送给目标
      * 
-     * NeoForge 1.21.1: 简化版本，暂时移除Flux/GT集成代码
-     * 主要使用标准能量接口
+     * 优先级：
+     * 1. 从自己的AE2网络提取能量（如果安装了appflux）
+     * 2. 从邻居能量源提取（Flux Networks > GregTech > 标准能量）
      */
     public void pushEnergyToTarget(BlockEntity target) {
         if (level == null || target == null) return;
@@ -233,14 +234,29 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
             return;
         }
 
-        // 从所有邻居方向尝试提取能量并推送
-        // 支持Flux Networks Long能量和标准能量接口
+        // 🔥 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
+        if (AE2FluxIntegration.isAvailable()) {
+            long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
+            if (extracted > 0) {
+                // 尝试推送到目标的所有面
+                long inserted = pushToTargetAllSides(target, extracted, true);
+                if (inserted > 0) {
+                    // 实际执行传输
+                    AE2FluxIntegration.extractEnergyFromOwnNetwork(this, inserted, false);
+                    pushToTargetAllSides(target, inserted, false);
+                    return; // 成功从AE2网络传输
+                }
+            }
+        }
+
+        // 优先级2：从所有邻居方向尝试提取能量并推送
+        // 支持Flux Networks Long能量、GregTech、标准能量接口
         for (Direction sourceDir : Direction.values()) {
             BlockPos neighborPos = worldPosition.relative(sourceDir);
             BlockEntity sourceBE = level.getBlockEntity(neighborPos);
             if (sourceBE == null || sourceBE instanceof WirelessEnergyTowerBlockEntity) continue;
             
-            // 使用辅助类提取能量（自动选择Flux或标准能量）
+            // 使用辅助类提取能量（自动选择Flux/GT/标准能量，优先级已在Helper中处理）
             long extracted = com.mebeamformer.energy.EnergyStorageHelper.extractEnergy(
                 sourceBE, sourceDir.getOpposite(), MAX_TRANSFER, true
             );
@@ -254,7 +270,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
                     );
                     if (actualExtracted > 0) {
                         pushToTargetAllSides(target, actualExtracted, false);
-                        return; // 成功传输
+                        return; // 成功从邻居传输
                     }
                 }
             }
@@ -278,6 +294,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     
     /**
      * 推送能量到另一个感应塔（电网功能）
+     * 优先从自己的AE2网络提取，然后从邻居提取
      */
     private void pushEnergyToTower(WirelessEnergyTowerBlockEntity targetTower) {
         if (level == null) return;
@@ -286,7 +303,22 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
         Set<BlockPos> visited = new java.util.HashSet<>();
         visited.add(this.worldPosition);
         
-        // 从邻居提取能量
+        // 🔥 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
+        if (AE2FluxIntegration.isAvailable()) {
+            long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
+            if (extracted > 0) {
+                // 分配到目标塔网络
+                long distributed = targetTower.distributeEnergyInNetwork(extracted, true, visited);
+                if (distributed > 0) {
+                    // 实际提取
+                    AE2FluxIntegration.extractEnergyFromOwnNetwork(this, distributed, false);
+                    targetTower.distributeEnergyInNetwork(distributed, false, visited);
+                    return;
+                }
+            }
+        }
+        
+        // 优先级2：从邻居提取能量
         for (Direction sourceDir : Direction.values()) {
             BlockPos neighborPos = worldPosition.relative(sourceDir);
             BlockEntity sourceBE = level.getBlockEntity(neighborPos);

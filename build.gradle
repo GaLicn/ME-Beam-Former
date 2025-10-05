@@ -141,8 +141,8 @@ dependencies {
     implementation "mezz.jei:jei-1.21.1-neoforge:19.21.0.247"
     implementation "curse.maven:glodium-957920:5821676"
 
-    implementation "curse.maven:flux-networks-248020:6089446"
-    implementation "curse.maven:applied-flux-965012:6649565"
+   // implementation "curse.maven:flux-networks-248020:6089446"
+   // implementation "curse.maven:applied-flux-965012:6649565"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.

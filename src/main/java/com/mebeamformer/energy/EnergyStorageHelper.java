@@ -14,6 +14,28 @@ import org.jetbrains.annotations.Nullable;
  */
 public class EnergyStorageHelper {
     
+    // Flux Networks 反射缓存
+    private static volatile boolean FLUX_INITIALIZED = false;
+    private static Object FLUX_CAPABILITY = null;
+    
+    /**
+     * 初始化 Flux Networks 反射（延迟加载）
+     */
+    private static void initFluxReflection() {
+        if (FLUX_INITIALIZED) return;
+        synchronized (EnergyStorageHelper.class) {
+            if (FLUX_INITIALIZED) return;
+            try {
+                Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
+                java.lang.reflect.Field blockCapField = fluxCapClass.getField("BLOCK");
+                FLUX_CAPABILITY = blockCapField.get(null);
+            } catch (Exception e) {
+                // Flux Networks 未安装
+            }
+            FLUX_INITIALIZED = true;
+        }
+    }
+    
     /**
      * 尝试从方块实体提取能量（支持多种能量系统）
      * 优先级：Flux Networks Long > GregTech > 标准能量
@@ -26,19 +48,9 @@ public class EnergyStorageHelper {
         if (level == null) return -1;
         
         // 1. 尝试Flux Networks Long能量（如果已安装）
-        try {
-            var fluxCap = level.getCapability(
-                sonar.fluxnetworks.api.FluxCapabilities.BLOCK,
-                be.getBlockPos(),
-                be.getBlockState(),
-                be,
-                side
-            );
-            if (fluxCap != null && fluxCap.canExtract()) {
-                return fluxCap.extractEnergyL(maxExtract, simulate);
-            }
-        } catch (NoClassDefFoundError ignored) {
-            // Flux Networks未安装
+        long fluxExtracted = tryExtractFluxEnergy(be, level, side, maxExtract, simulate);
+        if (fluxExtracted >= 0) {
+            return fluxExtracted;
         }
         
         // 2. 尝试GregTech能量（如果已安装）
@@ -75,19 +87,9 @@ public class EnergyStorageHelper {
         if (level == null) return -1;
         
         // 1. 尝试Flux Networks Long能量（如果已安装）
-        try {
-            var fluxCap = level.getCapability(
-                sonar.fluxnetworks.api.FluxCapabilities.BLOCK,
-                be.getBlockPos(),
-                be.getBlockState(),
-                be,
-                side
-            );
-            if (fluxCap != null && fluxCap.canReceive()) {
-                return fluxCap.receiveEnergyL(maxInsert, simulate);
-            }
-        } catch (NoClassDefFoundError ignored) {
-            // Flux Networks未安装
+        long fluxInserted = tryInsertFluxEnergy(be, level, side, maxInsert, simulate);
+        if (fluxInserted >= 0) {
+            return fluxInserted;
         }
         
         // 2. 尝试GregTech能量（如果已安装）
@@ -120,19 +122,27 @@ public class EnergyStorageHelper {
         Level level = be.getLevel();
         if (level == null) return false;
         
-        // 检查Flux Networks
-        try {
-            var fluxCap = level.getCapability(
-                sonar.fluxnetworks.api.FluxCapabilities.BLOCK,
-                be.getBlockPos(),
-                be.getBlockState(),
-                be,
-                side
-            );
-            if (fluxCap != null && fluxCap.canExtract()) {
-                return true;
+        // 检查Flux Networks（通过反射）
+        initFluxReflection();
+        if (FLUX_CAPABILITY != null) {
+            try {
+                java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
+                    "getCapability",
+                    net.neoforged.neoforge.capabilities.BlockCapability.class,
+                    BlockPos.class,
+                    net.minecraft.world.level.block.state.BlockState.class,
+                    BlockEntity.class,
+                    Object.class
+                );
+                Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
+                if (fluxCap != null) {
+                    java.lang.reflect.Method canExtractMethod = fluxCap.getClass().getMethod("canExtract");
+                    if ((Boolean) canExtractMethod.invoke(fluxCap)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {
             }
-        } catch (NoClassDefFoundError ignored) {
         }
         
         // 检查标准能量
@@ -154,19 +164,27 @@ public class EnergyStorageHelper {
         Level level = be.getLevel();
         if (level == null) return false;
         
-        // 检查Flux Networks
-        try {
-            var fluxCap = level.getCapability(
-                sonar.fluxnetworks.api.FluxCapabilities.BLOCK,
-                be.getBlockPos(),
-                be.getBlockState(),
-                be,
-                side
-            );
-            if (fluxCap != null && fluxCap.canReceive()) {
-                return true;
+        // 检查Flux Networks（通过反射）
+        initFluxReflection();
+        if (FLUX_CAPABILITY != null) {
+            try {
+                java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
+                    "getCapability",
+                    net.neoforged.neoforge.capabilities.BlockCapability.class,
+                    BlockPos.class,
+                    net.minecraft.world.level.block.state.BlockState.class,
+                    BlockEntity.class,
+                    Object.class
+                );
+                Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
+                if (fluxCap != null) {
+                    java.lang.reflect.Method canReceiveMethod = fluxCap.getClass().getMethod("canReceive");
+                    if ((Boolean) canReceiveMethod.invoke(fluxCap)) {
+                        return true;
+                    }
+                }
+            } catch (Exception ignored) {
             }
-        } catch (NoClassDefFoundError ignored) {
         }
         
         // 检查标准能量
@@ -188,19 +206,25 @@ public class EnergyStorageHelper {
         Level level = be.getLevel();
         if (level == null) return 0;
         
-        // 尝试Flux Networks
-        try {
-            var fluxCap = level.getCapability(
-                sonar.fluxnetworks.api.FluxCapabilities.BLOCK,
-                be.getBlockPos(),
-                be.getBlockState(),
-                be,
-                side
-            );
-            if (fluxCap != null) {
-                return fluxCap.getEnergyStoredL();
+        // 尝试Flux Networks（通过反射）
+        initFluxReflection();
+        if (FLUX_CAPABILITY != null) {
+            try {
+                java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
+                    "getCapability",
+                    net.neoforged.neoforge.capabilities.BlockCapability.class,
+                    BlockPos.class,
+                    net.minecraft.world.level.block.state.BlockState.class,
+                    BlockEntity.class,
+                    Object.class
+                );
+                Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
+                if (fluxCap != null) {
+                    java.lang.reflect.Method getEnergyStoredMethod = fluxCap.getClass().getMethod("getEnergyStoredL");
+                    return (Long) getEnergyStoredMethod.invoke(fluxCap);
+                }
+            } catch (Exception ignored) {
             }
-        } catch (NoClassDefFoundError ignored) {
         }
         
         // 标准能量
@@ -212,6 +236,84 @@ public class EnergyStorageHelper {
             side
         );
         return normalCap != null ? normalCap.getEnergyStored() : 0;
+    }
+    
+    // ==================== Flux Networks 能量支持 ====================
+    
+    /**
+     * 尝试从 Flux Networks 机器提取能量（通过反射）
+     * 
+     * @return 实际提取的能量（FE），-1表示没有Flux接口或Flux未安装
+     */
+    private static long tryExtractFluxEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxExtract, boolean simulate) {
+        initFluxReflection();
+        if (FLUX_CAPABILITY == null) return -1;
+        
+        try {
+            // 通过反射获取Flux能量容器
+            java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
+                "getCapability",
+                net.neoforged.neoforge.capabilities.BlockCapability.class,
+                BlockPos.class,
+                net.minecraft.world.level.block.state.BlockState.class,
+                BlockEntity.class,
+                Object.class
+            );
+            
+            Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
+            
+            if (fluxCap != null) {
+                // 检查是否可以提取
+                java.lang.reflect.Method canExtractMethod = fluxCap.getClass().getMethod("canExtract");
+                if ((Boolean) canExtractMethod.invoke(fluxCap)) {
+                    // 提取能量
+                    java.lang.reflect.Method extractMethod = fluxCap.getClass().getMethod("extractEnergyL", long.class, boolean.class);
+                    return (Long) extractMethod.invoke(fluxCap, maxExtract, simulate);
+                }
+            }
+        } catch (Exception e) {
+            // Flux调用失败或不兼容
+        }
+        
+        return -1;
+    }
+    
+    /**
+     * 尝试向 Flux Networks 机器插入能量（通过反射）
+     * 
+     * @return 实际插入的能量（FE），-1表示没有Flux接口或Flux未安装
+     */
+    private static long tryInsertFluxEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxInsert, boolean simulate) {
+        initFluxReflection();
+        if (FLUX_CAPABILITY == null) return -1;
+        
+        try {
+            // 通过反射获取Flux能量容器
+            java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
+                "getCapability",
+                net.neoforged.neoforge.capabilities.BlockCapability.class,
+                BlockPos.class,
+                net.minecraft.world.level.block.state.BlockState.class,
+                BlockEntity.class,
+                Object.class
+            );
+            
+            Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
+            
+            if (fluxCap != null) {
+                // 检查是否可以接收
+                java.lang.reflect.Method canReceiveMethod = fluxCap.getClass().getMethod("canReceive");
+                if ((Boolean) canReceiveMethod.invoke(fluxCap)) {
+                    // 插入能量
+                    java.lang.reflect.Method receiveMethod = fluxCap.getClass().getMethod("receiveEnergyL", long.class, boolean.class);
+                    return (Long) receiveMethod.invoke(fluxCap, maxInsert, simulate);
+                }
+            }
+        } catch (Exception e) {
+            // Flux调用失败或不兼容
+        }
+        
+        return -1;
     }
     
     // ==================== GregTech 能量支持 ====================
