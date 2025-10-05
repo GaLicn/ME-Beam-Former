@@ -1,12 +1,14 @@
 {
   "required": true,
-  "package": "com.mebeamformer.mixin",
-  "compatibilityLevel": "JAVA_21",
-  "mixins": [],
+  "minVersion": "0.8",
+  "package": "com.me_beam_former.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "ME-Beam-Former.refmap.json",
+  "mixins": [
+  ],
+  "client": [
+  ],
   "injectors": {
     "defaultRequire": 1
-  },
-  "overwrites": {
-    "requireAnnotations": true
   }
 }

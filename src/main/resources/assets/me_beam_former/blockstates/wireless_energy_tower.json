@@ -1,0 +1,13 @@
+{
+  "variants": {
+    "part=0": {
+      "model": "me_beam_former:block/wireless_energy_tower_bottom"
+    },
+    "part=1": {
+      "model": "me_beam_former:block/wireless_energy_tower_middle"
+    },
+    "part=2": {
+      "model": "me_beam_former:block/wireless_energy_tower_top"
+    }
+  }
+} 

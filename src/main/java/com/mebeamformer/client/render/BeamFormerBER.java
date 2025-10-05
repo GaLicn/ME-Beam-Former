@@ -1,0 +1,100 @@
+package com.mebeamformer.client.render;
+
+import com.mebeamformer.block.BeamFormerBlock;
+import com.mebeamformer.blockentity.BeamFormerBlockEntity;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
+import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import static com.mebeamformer.block.BeamFormerBlock.STATUS;
+import appeng.api.implementations.blockentities.IColorableBlockEntity;
+import appeng.api.util.AEColor;
+
+public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity> {
+    public BeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
+
+    @Override
+    public int getViewDistance() {
+        // 扩大渲染距离以确保远距离光束能够被渲染
+        // 返回一个足够大的值以覆盖最大可能的光束长度（32格）加上额外缓冲
+        return 256;
+    }
+
+    @Override
+    public boolean shouldRenderOffScreen(BeamFormerBlockEntity te) {
+        // 允许即使BlockEntity不在屏幕上也渲染光束
+        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
+        return te != null && te.getBeamLength() > 0;
+    }
+
+    @Override
+    public void render(BeamFormerBlockEntity te, float partialTicks, PoseStack poseStack, MultiBufferSource buffers, int packedLight, int packedOverlay) {
+        if (te == null) return;
+        BlockState state = te.getBlockState();
+        if (!(state.getBlock() instanceof BeamFormerBlock)) return;
+        
+        // 使用BlockEntity的shouldRenderBeam方法来决定是否渲染
+        if (!te.shouldRenderBeam()) return;
+        
+        // 渲染条件仅依据服务端同步过来的 beamLength 和可见性检查
+        Direction dir = state.getValue(BeamFormerBlock.FACING);
+        int len = Math.max(0, te.getBeamLength());
+        // 方块版：仅在长度>0时渲染，不再使用"BEAMING"时的0.5格占位，避免断线后残留
+        double visibleLen = len;
+        if (visibleLen <= 0) return;
+
+        Level level = te.getLevel();
+        BlockPos pos = te.getBlockPos();
+        if (level == null) return;
+        int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
+        if (!isPathClearForRender(level, pos, dir, checkLen)) return;
+
+        // 颜色：尝试从背面相邻的线缆总线获取 AE 颜色（最鲜艳变体），否则默认为白色
+        float r = 1f, g = 1f, b = 1f;
+        BlockPos back = pos.relative(dir.getOpposite());
+        var backBe = level.getBlockEntity(back);
+        if (backBe instanceof IColorableBlockEntity cbe) {
+            AEColor color = cbe.getColor();
+            if (color != null) {
+                int hex = color.blackVariant;
+                float scale = 255f;
+                r = ((hex >> 16) & 0xFF) / scale;
+                g = ((hex >> 8) & 0xFF) / scale;
+                b = (hex & 0xFF) / scale;
+            }
+        }
+
+        // 方块形态使用更粗的光束（例如 0.28f）
+        float thickness = 0.28f;
+        com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
+                poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay, thickness);
+    }
+
+    private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {
+        BlockPos cur = start;
+        for (int i = 0; i < length; i++) {
+            cur = cur.relative(dir);
+            var state = level.getBlockState(cur);
+            if (state.canOcclude() && !state.isAir()) {
+                var other = level.getBlockEntity(cur);
+                if (other instanceof BeamFormerBlockEntity) {
+                    Direction otherFacing = level.getBlockState(cur).getValue(BeamFormerBlock.FACING);
+                    if (i == length - 1 && otherFacing == dir.getOpposite()) {
+                        return true; // 允许终点为对向的成型器
+                    }
+                }
+                return false;
+            }
+            var be = level.getBlockEntity(cur);
+            if (be instanceof BeamFormerBlockEntity) {
+                Direction otherFacing = level.getBlockState(cur).getValue(BeamFormerBlock.FACING);
+                if (otherFacing == dir) return false; // 不穿过同向
+            }
+        }
+        return true;
+    }
+}

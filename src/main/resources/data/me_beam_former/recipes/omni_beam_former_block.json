@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PPP",
+    "PIP",
+    "PPP"
+  ],
+  "key": {
+    "P": { "item": "me_beam_former:beam_former_part" },
+    "I": {"item": "me_beam_former:beam_former_block"}
+  },
+  "result": { "item": "me_beam_former:omni_beam_former_block", "count": 1 }
+}

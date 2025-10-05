@@ -36,7 +36,7 @@ displayName="${mod_name}" #mandatory
 #displayURL="https://change.me.to.your.mods.homepage.example.invalid/" #optional
 
 # A file name (in the root of the mod JAR) containing a logo for display
-#logoFile="examplemod.png" #optional
+logoFile="me_beam_former.png" #optional
 
 # A text field displayed in the mod UI
 #credits="" #optional
@@ -84,6 +84,16 @@ config="${mod_id}.mixins.json"
     # This version range declares a minimum of the current minecraft version up to but not including the next major version
     versionRange="${minecraft_version_range}"
     ordering="NONE"
+    side="BOTH"
+
+# Require Applied Energistics 2 (AE2)
+[[dependencies.${mod_id}]]
+    modId="ae2"
+    type="required"
+    # Accept any AE2 version for 1.21.1
+    versionRange="[0,)"
+    # Our mod should load AFTER AE2 so all its registries/services are available
+    ordering="AFTER"
     side="BOTH"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
