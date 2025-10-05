@@ -1,0 +1,13 @@
+{
+  "itemGroup.me_beam_former": "Example Mod Tab",
+  "block.me_beam_former.example_block": "Example Block",
+  "item.me_beam_former.example_item": "Example Item",
+
+  "me_beam_former.configuration.title": "ME-Beam-Former Configs",
+  "me_beam_former.configuration.section.me_beam_former.common.toml": "ME-Beam-Former Configs",
+  "me_beam_former.configuration.section.me_beam_former.common.toml.title": "ME-Beam-Former Configs",
+  "me_beam_former.configuration.items": "Item List",
+  "me_beam_former.configuration.logDirtBlock": "Log Dirt Block",
+  "me_beam_former.configuration.magicNumberIntroduction": "Magic Number Text",
+  "me_beam_former.configuration.magicNumber": "Magic Number"
+}
