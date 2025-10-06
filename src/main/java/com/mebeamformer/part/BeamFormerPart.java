@@ -56,18 +56,18 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public void getBoxes(IPartCollisionHelper bch) {
-        // 碰撞箱坐标系统：模型-2到8映射为碰撞箱8到18
-        // 主体部分 (模型z:2-8 -> 碰撞箱z:8-14)
-        bch.addBox(5, 5, 14, 11, 11, 8);
-        // 外层框架 (模型z:5-7 -> 碰撞箱z:9-11)
-        bch.addBox(4, 4, 11, 12, 12, 9);
-        // 内部核心 (模型z:-2-2 -> 碰撞箱z:14-18)
-        bch.addBox(7, 7, 18, 9, 9, 14);
+        // 碰撞箱坐标系统：模型-4到6映射为碰撞箱10到20（已向前偏移2单位）
+        // 主体部分 (模型z:0-6 -> 碰撞箱z:10-16)
+        bch.addBox(5, 5, 16, 11, 11, 10);
+        // 外层框架 (模型z:3-5 -> 碰撞箱z:11-13)
+        bch.addBox(4, 4, 13, 12, 12, 11);
+        // 内部核心 (模型z:-4-0 -> 碰撞箱z:16-20)
+        bch.addBox(7, 7, 20, 9, 9, 16);
     }
 
     @Override
     public float getCableConnectionLength(AECableType cable) {
-        return 5f;  // 模型从Z=-2延伸到Z=8，总深度10像素
+        return 5f;  // 模型从Z=-4延伸到Z=6，总深度10像素
     }
 
     public boolean onPartActivate(Player player, InteractionHand hand, Vec3 pos) {
