@@ -35,16 +35,9 @@ import java.util.Set;
 import static com.mebeamformer.MEBeamFormer.MODID;
 
 public class BeamFormerPart extends AEBasePart implements IGridTickable {
-    // 模型结构：base + status(overlay) + prism
+    // 新模型结构：完整的单一模型，不需要叠加
     private static final ResourceLocation MODEL_BASE_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_base");
-    private static final ResourceLocation STATUS_OFF_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_off");
-    private static final ResourceLocation STATUS_ON_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_on");
-    private static final ResourceLocation STATUS_BEAMING_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_status_beaming");
-    private static final ResourceLocation PRISM_LOC = ResourceLocation.fromNamespaceAndPath(MODID, "part/beam_former_prism");
-
-    private static final IPartModel MODEL_BEAMING = new PartModel(STATUS_BEAMING_LOC, MODEL_BASE_LOC);
-    private static final IPartModel MODEL_ON = new PartModel(STATUS_ON_LOC, MODEL_BASE_LOC, PRISM_LOC);
-    private static final IPartModel MODEL_OFF = new PartModel(STATUS_OFF_LOC, MODEL_BASE_LOC, PRISM_LOC);
+    private static final IPartModel MODEL = new PartModel(MODEL_BASE_LOC);
 
     private int beamLength = 0;
     private BeamFormerPart other = null;
@@ -58,30 +51,23 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @PartModels
     public static List<IPartModel> getModels() {
-        return List.of(MODEL_OFF, MODEL_ON, MODEL_BEAMING);
+        return List.of(MODEL);
     }
 
     @Override
     public void getBoxes(IPartCollisionHelper bch) {
-        bch.addBox(10, 10, 12, 6, 6, 11);
-        bch.addBox(10, 10, 13, 6, 6, 12);
-        bch.addBox(10, 6, 14, 6, 5, 13);
-        bch.addBox(11, 9, 17, 10, 7, 14);
-        bch.addBox(9, 11, 17, 7, 10, 14);
-        bch.addBox(6, 9, 17, 5, 7, 14);
-        bch.addBox(9, 6, 17, 7, 5, 14);
-        bch.addBox(10, 11, 14, 6, 10, 13);
-        bch.addBox(6, 10, 14, 5, 6, 13);
-        bch.addBox(11, 9, 13, 10, 7, 12);
-        bch.addBox(6, 9, 13, 5, 7, 12);
-        bch.addBox(9, 6, 13, 7, 5, 12);
-        bch.addBox(9, 11, 13, 7, 10, 12);
-        bch.addBox(11, 10, 14, 10, 6, 13);
+        // 碰撞箱坐标系统：模型-2到8映射为碰撞箱8到18
+        // 主体部分 (模型z:2-8 -> 碰撞箱z:8-14)
+        bch.addBox(5, 5, 14, 11, 11, 8);
+        // 外层框架 (模型z:5-7 -> 碰撞箱z:9-11)
+        bch.addBox(4, 4, 11, 12, 12, 9);
+        // 内部核心 (模型z:-2-2 -> 碰撞箱z:14-18)
+        bch.addBox(7, 7, 18, 9, 9, 14);
     }
 
     @Override
     public float getCableConnectionLength(AECableType cable) {
-        return 5f;
+        return 5f;  // 模型从Z=-2延伸到Z=8，总深度10像素
     }
 
     public boolean onPartActivate(Player player, InteractionHand hand, Vec3 pos) {
@@ -104,15 +90,8 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public IPartModel getStaticModels() {
-        // 已配对（有光束）-> BEAMING；通电但未配对 -> ON；否则 OFF
-        // 注意：即使Part未激活（如缺频道），只要有光束连接就显示BEAMING状态
-        if (beamLength > 0 || other != null) {
-            return MODEL_BEAMING;
-        }
-        if (this.isActive()) {
-            return MODEL_ON;
-        }
-        return MODEL_OFF;
+        // 新模型是完整的单一模型，状态通过光照和光束显示
+        return MODEL;
     }
 
     @Override
