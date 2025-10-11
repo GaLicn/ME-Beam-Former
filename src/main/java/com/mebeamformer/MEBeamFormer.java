@@ -218,14 +218,14 @@ public class MEBeamFormer {
                 (blockEntity, context) -> blockEntity
             );
             
-            // 🔥 注册标准能量存储能力（用于无线能源感应塔）
+            // 注册标准能量存储能力（用于无线能源感应塔）
             event.registerBlockEntity(
                 net.neoforged.neoforge.capabilities.Capabilities.EnergyStorage.BLOCK,
                 WIRELESS_ENERGY_TOWER_BE.get(),
                 (blockEntity, context) -> blockEntity // 塔自身实现IEnergyStorage
             );
             
-            // 🔥🔥 注册Flux Networks Long能量能力（突破Integer.MAX_VALUE限制！）
+            // 注册Flux Networks Long能量能力（突破Integer.MAX_VALUE限制）
             // 使用动态代理实现软依赖，无需编译时依赖Flux Networks
             try {
                 Class<?> fluxCapClass = Class.forName("sonar.fluxnetworks.api.FluxCapabilities");
@@ -241,12 +241,12 @@ public class MEBeamFormer {
                         (com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity) blockEntity
                     )
                 );
-                LOGGER.info("✅ Successfully registered Flux Networks Long Energy capability for Wireless Energy Tower!");
+                LOGGER.info("Successfully registered Flux Networks Long Energy capability for Wireless Energy Tower");
             } catch (Exception e) {
-                LOGGER.info("ℹ️ Flux Networks not installed, Long Energy capability not registered");
+                LOGGER.info("Flux Networks not installed, Long Energy capability not registered");
             }
             
-            // 🔥🔥🔥 注册GregTech CEu能量能力（支持电压/电流系统，4 FE = 1 EU）
+            // 注册GregTech CEu能量能力（支持电压/电流系统，4 FE = 1 EU）
             // 使用动态代理实现软依赖，无需编译时依赖GregTech
             try {
                 if (com.mebeamformer.energy.GTEnergyAdapter.isGTAvailable()) {
@@ -263,11 +263,11 @@ public class MEBeamFormer {
                                 (com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity) blockEntity
                             )
                         );
-                        LOGGER.info("✅ Successfully registered GregTech CEu Energy capability for Wireless Energy Tower! (4 FE = 1 EU)");
+                        LOGGER.info("Successfully registered GregTech CEu Energy capability for Wireless Energy Tower (4 FE = 1 EU)");
                     }
                 }
             } catch (Exception e) {
-                LOGGER.info("ℹ️ GregTech CEu not installed, GT energy capability not registered: {}", e.getMessage());
+                LOGGER.info("GregTech CEu not installed, GT energy capability not registered: {}", e.getMessage());
             }
     }
 

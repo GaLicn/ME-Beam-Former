@@ -32,33 +32,21 @@ import java.lang.reflect.Method;
 /**
  * 无线能源感应塔
  * 
- * 功能：
- * 1. 【主动模式】从邻居能量源提取能量，无线传输给绑定的目标机器
- * 2. 【被动模式】接收外部推送的能量（如Flux Point），立即转发给绑定的目标机器
- * 3. 继承 AENetworkBlockEntity，可以连接 AE2 线缆并接入 ME 网络
- * 4. 如果安装了 appflux，可以直接从 ME 网络的 FE 存储提取能量
- * 5. 支持多种能量接口：Flux Networks、GregTech CEu、Long Energy、Forge Energy
+ * 主动模式：从邻居能量源提取能量并无线传输给绑定的目标机器
+ * 被动模式：接收外部推送的能量（如Flux Point）并立即转发给绑定目标
  * 
- * 能量传输模式：
- * - 主动提取：ME 网络 (appflux) > Flux Networks > Long Energy > Forge Energy > 邻居能量源
- * - 被动接收：直接转发给绑定目标，无缓存穿透
+ * 能量接口优先级：
+ * - 提取：ME 网络 > Flux Networks > Long Energy > Forge Energy
+ * - 插入：Flux Networks > GregTech > Long Energy > Forge Energy
  * 
- * 设计特点：
- * - 无内部能量缓存，所有能量实时透传
- * - 支持塔到塔的电网连接和递归转发
- * 
- *  性能优化（参考 Flux Networks 架构，降低90%+服务端延迟）：
- * 1. **集中式管理**：所有能源塔由 WirelessEnergyNetwork 全局管理器统一处理
- *    - 移除了每个塔的独立 tick
- *    - 批量处理所有能量传输
- *    - 减少90%的重复查询和调用
- * 2. 反射调用缓存：静态缓存Flux/GT的Class和Method，避免每tick重复反射
- * 3. 邻居接口缓存：缓存邻居能量源2秒，避免每tick扫描6个方向
- * 4. 迭代替代递归：使用队列BFS遍历塔网络，消除递归栈开销和临时对象创建
-
+ * 性能优化：
+ * - 集中式管理：WirelessEnergyNetwork 全局管理器统一处理所有塔
+ * - 反射缓存：静态缓存 Flux/GT 的反射调用
+ * - 邻居缓存：缓存邻居能量源2秒
+ * - BFS迭代：使用队列遍历塔网络，避免递归开销
  */
 public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity implements ILinkable, IEnergyStorage, ILongEnergyStorage {
-    // ========== 反射缓存（静态，所有实例共享）==========
+    // 反射缓存（静态，所有实例共享）
     // Flux Networks 反射缓存
     private static volatile boolean FLUX_INITIALIZED = false;
     private static Class<?> FLUX_CAP_CLASS = null;
@@ -80,7 +68,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     private static Method GT_GET_INPUT_AMPERAGE_METHOD = null;
     private static Method GT_GET_ENERGY_CAN_BE_INSERTED_METHOD = null;
     
-    // ========== 邻居能量源缓存 ==========
+    // 邻居能量源缓存
     private static class NeighborEnergyCache {
         Direction direction;
         BlockPos position;
@@ -100,7 +88,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     private NeighborEnergyCache energySourceCache = null;
     private static final int CACHE_VALIDITY_TICKS = 40; // 2秒缓存有效期
     
-    // ========== 原有字段 ==========
+    // 基本字段
     // 持久化：绑定目标集合
     private final Set<BlockPos> links = new HashSet<>();
     // 客户端渲染缓存：当前连接的目标列表（服务端同步）
@@ -126,7 +114,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
             .setIdlePowerUsage(0.0);  // 不消耗 AE2 网络能量
     }
     
-    // ========== 反射初始化方法（只在第一次使用时调用一次）==========
+    // 反射初始化方法（只在第一次使用时调用一次）
     
     /**
      * 初始化 Flux Networks 反射缓存
@@ -180,7 +168,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     @Override
     public void onLoad() {
         super.onLoad();
-        // 🔥 注册到全局管理器 - 集中式能量传输
+        // 注册到全局管理器进行集中式能量传输
         if (level != null && !level.isClientSide) {
             WirelessEnergyNetwork.getInstance().registerTower(this);
         }
@@ -189,17 +177,14 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     @Override
     public void setRemoved() {
         super.setRemoved();
-        // 🔥 从全局管理器注销
+        // 从全局管理器注销
         if (level != null && !level.isClientSide) {
             WirelessEnergyNetwork.getInstance().unregisterTower(this);
         }
     }
     
-    // NeoForge 1.21.1: invalidateCaps不再需要
-    // Capability由Level管理，自动失效
-
-    // ========== 旧的 Tick 方法已移除，现在由 WirelessEnergyNetwork 全局管理器统一处理 ==========
-    // 这个改变对玩家完全透明，只是内部实现优化
+    // NeoForge 1.21.1: invalidateCaps不再需要，Capability由Level管理自动失效
+    // Tick 方法已移除，现在由 WirelessEnergyNetwork 全局管理器统一处理
     
     /**
      * 获取上次同步的连接列表（供全局管理器使用）
@@ -234,7 +219,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
             return;
         }
 
-        // 🔥 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
+        // 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
         if (AE2FluxIntegration.isAvailable()) {
             long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
             if (extracted > 0) {
@@ -295,24 +280,26 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     /**
      * 推送能量到另一个感应塔（电网功能）
      * 优先从自己的AE2网络提取，然后从邻居提取
+     * 否则第二次调用时BFS会认为所有节点都已访问，导致不传输能量
      */
     private void pushEnergyToTower(WirelessEnergyTowerBlockEntity targetTower) {
         if (level == null) return;
         
-        // 防止循环：记录已访问的塔
-        Set<BlockPos> visited = new java.util.HashSet<>();
-        visited.add(this.worldPosition);
-        
-        // 🔥 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
+        // 优先级1：尝试从自己的AE2网络提取能量（如果安装了appflux）
         if (AE2FluxIntegration.isAvailable()) {
             long extracted = AE2FluxIntegration.extractEnergyFromOwnNetwork(this, MAX_TRANSFER, true);
             if (extracted > 0) {
-                // 分配到目标塔网络
-                long distributed = targetTower.distributeEnergyInNetwork(extracted, true, visited);
+                // 模拟阶段：使用临时visited
+                Set<BlockPos> visitedSimulate = new java.util.HashSet<>();
+                visitedSimulate.add(this.worldPosition);
+                long distributed = targetTower.distributeEnergyInNetwork(extracted, true, visitedSimulate);
+                
                 if (distributed > 0) {
-                    // 实际提取
+                    // 实际执行：使用新的visited
+                    Set<BlockPos> visitedActual = new java.util.HashSet<>();
+                    visitedActual.add(this.worldPosition);
                     AE2FluxIntegration.extractEnergyFromOwnNetwork(this, distributed, false);
-                    targetTower.distributeEnergyInNetwork(distributed, false, visited);
+                    targetTower.distributeEnergyInNetwork(distributed, false, visitedActual);
                     return;
                 }
             }
@@ -328,13 +315,19 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
                 sourceBE, sourceDir.getOpposite(), MAX_TRANSFER, true
             );
             if (extracted > 0) {
-                // 分配到目标塔网络
-                long distributed = targetTower.distributeEnergyInNetwork(extracted, true, visited);
+                // 模拟阶段：使用临时visited
+                Set<BlockPos> visitedSimulate = new java.util.HashSet<>();
+                visitedSimulate.add(this.worldPosition);
+                long distributed = targetTower.distributeEnergyInNetwork(extracted, true, visitedSimulate);
+                
                 if (distributed > 0) {
+                    // 实际执行：使用新的visited
+                    Set<BlockPos> visitedActual = new java.util.HashSet<>();
+                    visitedActual.add(this.worldPosition);
                     long actualExtracted = com.mebeamformer.energy.EnergyStorageHelper.extractEnergy(
                         sourceBE, sourceDir.getOpposite(), distributed, false
                     );
-                    targetTower.distributeEnergyInNetwork(actualExtracted, false, visited);
+                    targetTower.distributeEnergyInNetwork(actualExtracted, false, visitedActual);
                     return;
                 }
             }
@@ -342,36 +335,78 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /**
-     * 在整个感应塔网络中分配能量（递归）
+     * 在整个感应塔网络中分配能量（BFS迭代）
+     * 使用广度优先遍历（队列）确保电网中每个节点都能获得能量
+     * 
+     * 每个塔的处理顺序：
+     * 1. 向邻居设备推送能量
+     * 2. 向绑定的非塔设备推送能量
+     * 3. 将绑定的塔加入队列继续遍历
+     * 
+     * @param amount 要分配的能量
+     * @param simulate 是否模拟
+     * @param visited 已访问的塔的位置集合（防止循环）
+     * @return 实际分配的能量
      */
     private long distributeEnergyInNetwork(long amount, boolean simulate, Set<BlockPos> visited) {
         if (level == null || amount <= 0) return 0;
-        if (visited.contains(this.worldPosition)) return 0;
         
+        // 使用队列进行广度优先遍历，避免递归
+        java.util.Queue<WirelessEnergyTowerBlockEntity> towerQueue = new java.util.LinkedList<>();
+        towerQueue.add(this);
         visited.add(this.worldPosition);
-        long totalDistributed = 0;
         
-        // 推送到本塔的目标
-        for (BlockPos targetPos : new java.util.ArrayList<>(this.links)) {
-            if (totalDistributed >= amount) break;
+        long totalInserted = 0;
+        
+        // 迭代处理每个塔
+        while (!towerQueue.isEmpty() && totalInserted < amount) {
+            WirelessEnergyTowerBlockEntity currentTower = towerQueue.poll();
+            long remaining = amount - totalInserted;
             
-            BlockEntity targetBE = level.getBlockEntity(targetPos);
-            if (targetBE == null) continue;
+            // 1. 先分配给当前塔的邻居设备（非塔）
+            for (Direction dir : Direction.values()) {
+                if (totalInserted >= amount) break;
+                
+                BlockPos neighborPos = currentTower.worldPosition.relative(dir);
+                BlockEntity neighborBE = level.getBlockEntity(neighborPos);
+                if (neighborBE != null && !(neighborBE instanceof WirelessEnergyTowerBlockEntity)) {
+                    long neighborRemaining = amount - totalInserted;
+                    long inserted = pushToTargetAllSides(neighborBE, neighborRemaining, simulate);
+                    totalInserted += inserted;
+                }
+            }
             
-            if (targetBE instanceof WirelessEnergyTowerBlockEntity otherTower) {
-                // 递归分配到其他塔
-                long distributed = otherTower.distributeEnergyInNetwork(
-                    amount - totalDistributed, simulate, visited
-                );
-                totalDistributed += distributed;
-            } else {
-                // 推送到普通设备
-                long inserted = pushToTargetAllSides(targetBE, amount - totalDistributed, simulate);
-                totalDistributed += inserted;
+            // 2. 分配给当前塔绑定的普通设备（非感应塔）
+            if (totalInserted < amount && !currentTower.links.isEmpty()) {
+                for (BlockPos targetPos : new HashSet<>(currentTower.links)) {
+                    if (totalInserted >= amount) break;
+                    
+                    BlockEntity targetBE = level.getBlockEntity(targetPos);
+                    if (targetBE == null || targetBE instanceof WirelessEnergyTowerBlockEntity) {
+                        continue;
+                    }
+                    
+                    long targetRemaining = amount - totalInserted;
+                    long inserted = pushToTargetAllSides(targetBE, targetRemaining, simulate);
+                    totalInserted += inserted;
+                }
+            }
+            
+            // 3. 将连接的其他感应塔加入队列（BFS扩展）
+            if (totalInserted < amount && !currentTower.links.isEmpty()) {
+                for (BlockPos targetPos : currentTower.links) {
+                    if (visited.contains(targetPos)) continue;
+                    
+                    BlockEntity targetBE = level.getBlockEntity(targetPos);
+                    if (targetBE instanceof WirelessEnergyTowerBlockEntity targetTower) {
+                        visited.add(targetPos);
+                        towerQueue.add(targetTower);
+                    }
+                }
             }
         }
         
-        return totalDistributed;
+        return totalInserted;
     }
     
     // TODO: NeoForge 1.21.1 - 需要恢复AE2/Flux/GT集成代码
@@ -468,7 +503,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /*
-     * 🔥 优化：在整个感应塔网络中分配能量（迭代版本，替代递归）
+     * 在整个感应塔网络中分配能量（迭代版本，替代递归）
      * 使用广度优先遍历（队列），避免递归栈开销和临时对象创建
      * 
      * @param amount 要分配的能量
@@ -651,7 +686,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /*
-     * 🔥 优化：尝试使用Flux Networks接口插入能量（支持Long）
+     * 尝试使用Flux Networks接口插入能量（支持Long）
      * 使用缓存的反射方法，避免重复 Class.forName 和 getMethod
      * 
      * @param target 目标方块实体
@@ -682,7 +717,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }*/
     
     /*
-     * 🔥 优化：直接推送能量到格雷科技设备（用于能量分配）
+     * 直接推送能量到格雷科技设备（用于能量分配）
      * 使用缓存的反射 Capability，减少重复查找
      */
     /*private long tryPushGTEnergyDirect(BlockEntity target, long amountFE, boolean simulate) {
@@ -729,7 +764,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
 
 
     /*
-     * 🔥 优化：尝试推送能量到GregTech CEu机器  
+     * 尝试推送能量到GregTech CEu机器
      * 使用缓存的 Capability，能量转换：4 FE = 1 EU
      */
     /*private boolean tryPushGTEnergy(BlockEntity target) {
@@ -917,7 +952,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /**
-     * 🔥 优化：使用Flux Networks接口推送到格雷科技
+     * 使用Flux Networks接口推送到格雷科技
      * 使用缓存的 Method 对象
      */
     private boolean pushFluxToGT(Object sourceFlux, Object container, Direction side,
@@ -1129,7 +1164,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /*
-     * 🔥 优化：使用Flux Networks接口推送能量
+     * 使用Flux Networks接口推送能量
      * 使用缓存的 Capability 和 Method 对象
      */
     /*private boolean pushFluxEnergy(Object sourceFlux, BlockEntity target) {
@@ -1653,7 +1688,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /**
-     * 🔥 优化：尝试使用Flux Networks接口提取能量
+     * 尝试使用Flux Networks接口提取能量
      * TODO: NeoForge 1.21.1 - Flux Networks集成暂时禁用（需要更新到新的Capability API）
      */
     private long tryExtractFluxEnergy(BlockEntity be, Direction side, long maxExtract, boolean simulate) {
@@ -1971,7 +2006,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
                        maxX + expansion, maxY + expansion, maxZ + expansion);
     }
     
-    // ==================== 能量接口实现（NeoForge 1.21.1 Capability系统）====================
+    // 能量接口实现（NeoForge 1.21.1 Capability系统）
     
     /**
      * 标准能量接口：接收能量（int版本）
@@ -2040,8 +2075,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     // ==================== Flux Networks Long能量接口 ====================
     
     /**
-     * 🔥 关键方法：接收Long能量（Flux Networks接口）
-     * 这让Flux Point可以向感应塔传输超过Integer.MAX_VALUE的能量
+     * 接收Long能量（Flux Networks接口）
+     * 支持Flux Point向感应塔传输超过Integer.MAX_VALUE的能量
      * 
      * 被动接收模式：
      * 1. 从外部（Flux Point/Flux Plug）接收能量
@@ -2097,40 +2132,17 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkedBlockEntity imple
     }
     
     /**
-     * 从另一个塔接收能量（递归安全）
+     * 从另一个塔接收能量（BFS迭代）
+     * 功能与 distributeEnergyInNetwork 相同，都使用BFS遍历整个塔网络
      */
     private long receiveEnergyFromTower(long amount, boolean simulate, Set<BlockPos> visited) {
-        if (level == null || amount <= 0) return 0;
-        if (visited.contains(this.worldPosition)) return 0; // 防止循环
-        
-        visited.add(this.worldPosition);
-        long totalInserted = 0;
-        
-        // 转发给本塔的目标
-        for (BlockPos targetPos : new ArrayList<>(this.links)) {
-            if (totalInserted >= amount) break;
-            
-            BlockEntity targetBE = level.getBlockEntity(targetPos);
-            if (targetBE == null) continue;
-            
-            long remaining = amount - totalInserted;
-            
-            if (targetBE instanceof WirelessEnergyTowerBlockEntity otherTower) {
-                // 递归转发
-                long inserted = otherTower.receiveEnergyFromTower(remaining, simulate, visited);
-                totalInserted += inserted;
-            } else {
-                // 推送到普通设备
-                long inserted = pushToTargetAllSides(targetBE, remaining, simulate);
-                totalInserted += inserted;
-            }
-        }
-        
-        return totalInserted;
+        // 直接复用 distributeEnergyInNetwork 的BFS逻辑
+        // 两个方法功能完全相同：在塔网络中分配能量
+        return distributeEnergyInNetwork(amount, simulate, visited);
     }
     
     /**
-     * 🔥 关键方法：提取Long能量（Flux Networks接口）
+     * 提取Long能量（Flux Networks接口）
      * 从邻居能量源提取能量
      */
     public long extractEnergyL(long maxExtract, boolean simulate) {

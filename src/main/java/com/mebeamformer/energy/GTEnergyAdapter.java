@@ -48,11 +48,11 @@ public class GTEnergyAdapter {
                 GT_ENERGY_CONTAINER_CLASS = Class.forName("com.gregtechceu.gtceu.api.capability.IEnergyContainer");
                 GT_CAPABILITY_CLASS = Class.forName("com.gregtechceu.gtceu.api.capability.GTCapability");
                 
-                LOGGER.info("✅ GregTech CEu detected! Energy conversion enabled (4 FE = 1 EU)");
+                LOGGER.info("GregTech CEu detected, energy conversion enabled (4 FE = 1 EU)");
             } catch (ClassNotFoundException e) {
-                LOGGER.debug("ℹ️ GregTech CEu not installed, GT energy support disabled");
+                LOGGER.debug("GregTech CEu not installed, GT energy support disabled");
             } catch (Exception e) {
-                LOGGER.warn("⚠️ Failed to initialize GregTech reflection: {}", e.getMessage());
+                LOGGER.warn("Failed to initialize GregTech reflection: {}", e.getMessage());
             }
             GT_INITIALIZED = true;
         }
@@ -78,7 +78,7 @@ public class GTEnergyAdapter {
             Field capField = GT_CAPABILITY_CLASS.getField("CAPABILITY_ENERGY_CONTAINER");
             return capField.get(null);
         } catch (Exception e) {
-            LOGGER.warn("⚠️ Failed to get GT energy capability: {}", e.getMessage());
+            LOGGER.warn("Failed to get GT energy capability: {}", e.getMessage());
             return null;
         }
     }
@@ -226,7 +226,7 @@ public class GTEnergyAdapter {
                         return false;
                     
                     default:
-                        LOGGER.warn("⚠️ Unhandled GT IEnergyContainer method: {} ({})", 
+                        LOGGER.warn("Unhandled GT IEnergyContainer method: {} ({})", 
                             methodName, method);
                         // 返回默认值
                         Class<?> returnType = method.getReturnType();
@@ -236,7 +236,7 @@ public class GTEnergyAdapter {
                         return null;
                 }
             } catch (Exception e) {
-                LOGGER.error("❌ Error invoking GT method {}: {}", methodName, e.getMessage(), e);
+                LOGGER.error("Error invoking GT method {}: {}", methodName, e.getMessage(), e);
                 throw e;
             }
         }
