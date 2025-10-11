@@ -11,7 +11,7 @@
     "C": { "item": "ae2:fluix_glass_cable" }
   },
   "result": {
-    "item": "me_beam_former:beam_former_part",
+    "id": "me_beam_former:beam_former_part",
     "count": 1
   }
 }

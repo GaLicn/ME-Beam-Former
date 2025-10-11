@@ -12,7 +12,7 @@
     "D": { "item": "ae2:fluix_smart_dense_cable" }
   },
   "result": {
-    "item": "me_beam_former:beam_former_block",
+    "id": "me_beam_former:beam_former_block",
     "count": 1
   }
 }

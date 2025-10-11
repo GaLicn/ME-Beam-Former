@@ -12,5 +12,8 @@
     "T": { "item": "minecraft:redstone_block" },
     "Q": { "item": "minecraft:ender_eye" }
   },
-  "result": { "item": "me_beam_former:wireless_energy_tower", "count": 1 }
+  "result": {
+    "id": "me_beam_former:wireless_energy_tower",
+    "count": 1
+  }
 } 
