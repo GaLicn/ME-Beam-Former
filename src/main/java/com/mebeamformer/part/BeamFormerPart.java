@@ -225,6 +225,7 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
     }
 
     public int getBeamLength() { return beamLength; }
+    
     public boolean shouldRenderBeam() {
         // 渲染光束的条件：
         // 1. 没有隐藏光束
@@ -244,6 +245,34 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         }
         
         return true;
+    }
+    
+    /**
+     * 获取包含光束路径的扩展渲染边界框。
+     * 这个方法用于被Mixin调用，以扩展CableBusBlockEntity的渲染边界框。
+     * 
+     * @param baseBox 原始的边界框（通常是Part所在方块的AABB）
+     * @return 扩展后的AABB，包含整个光束路径
+     */
+    public net.minecraft.world.phys.AABB getExtendedRenderBoundingBox(net.minecraft.world.phys.AABB baseBox) {
+        // 如果没有光束，返回原始边界框
+        if (beamLength <= 0 || !shouldRenderBeam()) {
+            return baseBox;
+        }
+        
+        var be = getBlockEntity();
+        if (be == null) {
+            return baseBox;
+        }
+        
+        BlockPos pos = be.getBlockPos();
+        Direction dir = getSide();
+        
+        // 计算光束终点位置
+        BlockPos endPos = pos.relative(dir, beamLength);
+        
+        // 创建包含起点和终点的AABB，并稍微扩大以确保完整可见
+        return new net.minecraft.world.phys.AABB(pos, endPos).inflate(1.0);
     }
 
     @Override
