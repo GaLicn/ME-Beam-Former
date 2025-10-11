@@ -70,19 +70,21 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
         return 5f;  // 模型从Z=-4延伸到Z=6，总深度10像素
     }
 
-    public boolean onPartActivate(Player player, InteractionHand hand, Vec3 pos) {
+    @Override
+    public boolean onUseWithoutItem(Player player, Vec3 pos) {
         // Shift 右键切换可见性（无需外部工具）
         if (player.isShiftKeyDown()) {
-            hideBeam = !hideBeam;
-            if (other != null) {
-                other.hideBeam = hideBeam;
-                other.getHost().markForUpdate();
-                other.getHost().markForSave();
-                other.getHost().partChanged();
+            // 只在服务端执行逻辑
+            if (!player.level().isClientSide) {
+                hideBeam = !hideBeam;
+                if (other != null) {
+                    other.hideBeam = hideBeam;
+                    other.getHost().markForUpdate();
+                    other.getHost().markForSave();
+                }
+                getHost().markForUpdate();
+                getHost().markForSave();
             }
-            getHost().markForUpdate();
-            getHost().markForSave();
-            getHost().partChanged();
             return true;
         }
         return false;
