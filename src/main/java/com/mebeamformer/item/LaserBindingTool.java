@@ -169,7 +169,16 @@ public class LaserBindingTool extends Item {
                         
                         WirelessEnergyTowerBlockEntity sourceEntity = getTowerBlockEntity(level, source);
                         if (sourceEntity != null) {
-                            // 无线能源感应塔没有距离限制
+                            // 检查距离限制：水平范围20x20，垂直范围256（与塔到塔相同）
+                            int dx = Math.abs(pos.getX() - source.getX());
+                            int dy = Math.abs(pos.getY() - source.getY());
+                            int dz = Math.abs(pos.getZ() - source.getZ());
+                            
+                            if (dx > 20 || dz > 20 || dy > 256) {
+                                // 超出连接范围
+                                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_out_of_range"), true);
+                                return InteractionResult.SUCCESS;
+                            }
                             
                             // 检查是否已经连接
                             if (sourceEntity.getLinks().contains(pos)) {

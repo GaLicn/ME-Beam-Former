@@ -2,3 +2,6 @@
 run
 build
 .gradle
+crashreport
+othermods
+images
