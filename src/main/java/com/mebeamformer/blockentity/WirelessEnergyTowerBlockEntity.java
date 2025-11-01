@@ -1258,6 +1258,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         if (other.equals(this.getBlockPos())) return;
         if (this.links.add(other)) {
             this.setChanged();
+            // 立即同步到客户端（用于渲染）
+            if (level != null && !level.isClientSide) {
+                this.lastSyncedLinks.clear();
+                this.lastSyncedLinks.addAll(this.links);
+                this.markForUpdate();
+            }
         }
     }
 
@@ -1267,6 +1273,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     public void removeLink(BlockPos other) {
         if (this.links.remove(other)) {
             this.setChanged();
+            // 立即同步到客户端（用于渲染）
+            if (level != null && !level.isClientSide) {
+                this.lastSyncedLinks.clear();
+                this.lastSyncedLinks.addAll(this.links);
+                this.markForUpdate();
+            }
         }
     }
 

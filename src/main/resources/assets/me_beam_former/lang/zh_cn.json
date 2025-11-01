@@ -26,5 +26,5 @@
   "tooltip.me_beam_former.binding.invalid": "源成型器无效或已不存在",
   "tooltip.me_beam_former.binding.no_source": "请先用 Shift+右键 选定源成型器",
   "tooltip.me_beam_former.binding.self_link": "不能连接到自己",
-  "tooltip.me_beam_former.binding.out_of_range": "连接距离超出范围！限制：水平16x16，垂直32格"
+  "tooltip.me_beam_former.binding.out_of_range": "连接距离超出范围！限制：水平20x20，垂直32格"
 }
