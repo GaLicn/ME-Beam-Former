@@ -22,6 +22,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.DeferredBlock;
 import net.neoforged.neoforge.registries.DeferredItem;
@@ -161,11 +162,13 @@ public class MEBeamFormer {
         // 注册配置规范
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
-        // AE2：在模型烘焙前注册零件模型，避免渲染时出现"未注册零件模型"
-        try {
-            PartModels.registerModels(PartModelsHelper.createModels(BeamFormerPart.class));
-        } catch (Throwable t) {
-            LOGGER.error("Failed to register AE2 part models for BeamFormerPart", t);
+        // AE2：仅在客户端注册零件模型，避免 Dedicated Server 触发客户端类加载
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            try {
+                PartModels.registerModels(PartModelsHelper.createModels(BeamFormerPart.class));
+            } catch (Throwable t) {
+                LOGGER.error("Failed to register AE2 part models for BeamFormerPart", t);
+            }
         }
     }
 

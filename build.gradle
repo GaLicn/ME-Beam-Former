@@ -136,7 +136,7 @@ configurations {
 dependencies {
     implementation "org.appliedenergistics:appliedenergistics2:19.2.15"
     implementation "org.appliedenergistics:guideme:2.5.1"
-    implementation "curse.maven:jade-324717:5427817"
+    implementation "curse.maven:jade-324717:6853386"
     implementation "mekanism:Mekanism:1.21.1-10.7.0.55"
     implementation "mezz.jei:jei-1.21.1-neoforge:19.21.0.247"
     implementation "curse.maven:glodium-957920:5821676"
