@@ -164,10 +164,7 @@ public class WirelessEnergyTowerBlock extends Block implements EntityBlock {
         return null;
     }
 
-    // ========== Ticker 已移除 ==========
-    // 能源塔现在由 WirelessEnergyNetwork 全局管理器统一处理
-    // 这是性能优化的关键：集中式管理代替分散式 tick
-    // 对玩家完全透明，功能不变
+    // ticker 由 WirelessEnergyNetwork 统一处理
     
     @Nullable
     @Override

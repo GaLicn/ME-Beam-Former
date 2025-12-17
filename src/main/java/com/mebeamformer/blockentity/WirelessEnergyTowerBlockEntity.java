@@ -30,41 +30,13 @@ import java.util.*;
 import java.lang.reflect.Method;
 
 /**
- * 无线能源感应塔
- * 
- * 功能：
- * 1. 【主动模式】从邻居能量源提取能量，无线传输给绑定的目标机器
- * 2. 【被动模式】接收外部推送的能量（如Flux Point），立即转发给绑定的目标机器
- * 3. 继承 AENetworkBlockEntity，可以连接 AE2 线缆并接入 ME 网络
- * 4. 如果安装了 appflux，可以直接从 ME 网络的 FE 存储提取能量
- * 5. 支持多种能量接口：Flux Networks、GregTech CEu、Long Energy、Forge Energy
- * 
- * 能量传输模式：
- * - 主动提取：ME 网络 (appflux) > Flux Networks > Long Energy > Forge Energy > 邻居能量源
- * - 被动接收：直接转发给绑定目标，无缓存穿透
- * 
- * 设计特点：
- * - 无内部能量缓存，所有能量实时透传
- * - 支持塔到塔的电网连接和递归转发
- * 
- * 🔥 性能优化（参考 Flux Networks 架构，降低90%+服务端延迟）：
- * 1. **集中式管理**：所有能源塔由 WirelessEnergyNetwork 全局管理器统一处理
- *    - 移除了每个塔的独立 tick
- *    - 批量处理所有能量传输
- *    - 减少90%的重复查询和调用
- * 2. 反射调用缓存：静态缓存Flux/GT的Class和Method，避免每tick重复反射
- * 3. 邻居接口缓存：缓存邻居能量源2秒，避免每tick扫描6个方向
- * 4. 迭代替代递归：使用队列BFS遍历塔网络，消除递归栈开销和临时对象创建
- * 
- * 📦 对玩家完全透明：
- * - 功能完全不变
- * - 使用方式不变
- * - 存档完全兼容
- * - 只会感觉"服务器更流畅了"
+ * 无线能源感应塔。
+ * 能量转发由 {@link WirelessEnergyNetwork} 统一驱动。
  */
 public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity implements ILinkable {
-    // ========== 反射缓存（静态，所有实例共享）==========
-    // Flux Networks 反射缓存
+
+    // 反射缓存（所有实例共享）
+    // Flux Networks
     private static volatile boolean FLUX_INITIALIZED = false;
     private static Class<?> FLUX_CAP_CLASS = null;
     private static Capability<?> FLUX_CAPABILITY = null;
@@ -75,7 +47,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     private static Method FLUX_GET_ENERGY_STORED_METHOD = null;
     private static Method FLUX_GET_MAX_ENERGY_STORED_METHOD = null;
     
-    // GregTech 反射缓存
+    // GregTech
     private static volatile boolean GT_INITIALIZED = false;
     private static Class<?> GT_CAP_CLASS = null;
     private static Capability<?> GT_CAPABILITY = null;
@@ -85,7 +57,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     private static Method GT_GET_INPUT_AMPERAGE_METHOD = null;
     private static Method GT_GET_ENERGY_CAN_BE_INSERTED_METHOD = null;
     
-    // ========== 邻居能量源缓存 ==========
+    // 邻居能量源缓存
     private static class NeighborEnergyCache {
         Direction direction;
         BlockPos position;
@@ -104,38 +76,28 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     
     private NeighborEnergyCache energySourceCache = null;
     private static final int CACHE_VALIDITY_TICKS = 40; // 2秒缓存有效期
-    
-    // ========== 原有字段 ==========
-    // 持久化：绑定目标集合
+
     private final Set<BlockPos> links = new HashSet<>();
-    // 客户端渲染缓存：当前连接的目标列表（服务端同步）
     private List<BlockPos> clientLinks = Collections.emptyList();
-    // 上一次服务端可见集合，用于决定是否 markForUpdate()
     private final Set<BlockPos> lastSyncedLinks = new HashSet<>();
-    // 最大传输速率: Long.MAX_VALUE
     private static final long MAX_TRANSFER = Long.MAX_VALUE;
-    
-    // 能量能力缓存 - 分别缓存不同类型的能力
+
+    // 能量能力缓存
     private final LazyOptional<?>[] forgeEnergyCaps = new LazyOptional[7]; // 标准 Forge Energy
     private final LazyOptional<?>[] longEnergyCaps = new LazyOptional[7]; // Long Energy
     private final LazyOptional<?>[] fluxEnergyCaps = new LazyOptional[7]; // Flux Networks Energy
 
     public WirelessEnergyTowerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.WIRELESS_ENERGY_TOWER_BE.get(), pos, state);
-        
-        // 配置 AE2 网络节点
-        // 如果安装了 appflux，则可以从 ME 网络提取 FE 能量
-        // 设置为不需要频道，空闲功率消耗为 0（能源塔不消耗网络能量）
+
+        // AE2 节点：需要频道，空闲功耗 0
         this.getMainNode()
-            .setFlags(GridFlags.REQUIRE_CHANNEL)  // 需要频道才能连接
-            .setIdlePowerUsage(0.0);  // 不消耗 AE2 网络能量
+            .setFlags(GridFlags.REQUIRE_CHANNEL)
+            .setIdlePowerUsage(0.0);
     }
-    
-    // ========== 反射初始化方法（只在第一次使用时调用一次）==========
-    
+
     /**
-     * 初始化 Flux Networks 反射缓存
-     * 使用双重检查锁定确保线程安全且只初始化一次
+     * 初始化 Flux Networks 反射缓存。
      */
     private static void initFluxReflection() {
         if (FLUX_INITIALIZED) return;
@@ -161,8 +123,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 初始化 GregTech 反射缓存
-     * 使用双重检查锁定确保线程安全且只初始化一次
+     * 初始化 GregTech 反射缓存。
      */
     private static void initGTReflection() {
         if (GT_INITIALIZED) return;
@@ -185,7 +146,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     @Override
     public void onLoad() {
         super.onLoad();
-        // 🔥 注册到全局管理器 - 集中式能量传输
+
+        // 注册到全局网络
         if (level != null && !level.isClientSide) {
             WirelessEnergyNetwork.getInstance().registerTower(this);
         }
@@ -194,7 +156,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     @Override
     public void setRemoved() {
         super.setRemoved();
-        // 🔥 从全局管理器注销
+
+        // 从全局网络注销
         if (level != null && !level.isClientSide) {
             WirelessEnergyNetwork.getInstance().unregisterTower(this);
         }
@@ -228,9 +191,8 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
         }
     }
 
-    // ========== 旧的 Tick 方法已移除，现在由 WirelessEnergyNetwork 全局管理器统一处理 ==========
-    // 这个改变对玩家完全透明，只是内部实现优化
-    
+    // tick 由 WirelessEnergyNetwork 统一处理
+
     /**
      * 获取上次同步的连接列表（供全局管理器使用）
      */
@@ -248,42 +210,29 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
 
     /**
-     * 主动推送能量到目标机器（供全局管理器调用）
-     * 从能量源提取能量，然后推送给目标
-     * 
-     * 能量源优先级顺序：
-     * 0. AE2 Network (appflux) - 支持Long，从ME网络的FE存储提取 ✨
-     * 1. Flux Networks (IFNEnergyStorage) - 支持Long.MAX_VALUE，自动兼容Mekanism等模组
-     * 2. Long能量接口 (ILongEnergyStorage) - 支持Long.MAX_VALUE
-     * 3. 标准Forge Energy (IEnergyStorage) - 支持Integer.MAX_VALUE
-     * 
-     * 目标类型支持：
-     * - 其他无线能源感应塔（组成电网）
-     * - GregTech CEu (IEnergyContainer) - 支持Long，4 FE = 1 EU
-     * - Flux Networks设备
-     * - Long能量接口设备
-     * - 标准Forge Energy设备
+     * 向目标推送能量（供全局网络调用）。
+     * 优先级：AE2(appflux) -> GregTech -> Long -> Forge。
      */
     public void pushEnergyToTarget(BlockEntity target) {
         if (level == null) return;
 
-        // 特殊处理：如果目标是另一个感应塔，直接传输能量（电网功能）
+        // 目标为塔时，进行网络分配
         if (target instanceof WirelessEnergyTowerBlockEntity targetTower) {
             pushEnergyToTower(targetTower);
             return;
         }
 
-        // 优先尝试从 AE2 网络提取能量并推送
+        // AE2 网络
         if (AE2FluxIntegration.isAvailable()) {
             boolean transferred = tryPushFromAE2Network(target);
             if (transferred) return;
         }
 
-        // 优先尝试格雷科技
+        // GregTech
         boolean transferred = tryPushGTEnergy(target);
         if (transferred) return;
 
-        // 尝试使用Long能量接口推送（包括Flux Networks会在getCapability中处理）
+        // Long / Forge
         transferred = tryPushLongEnergy(target);
         if (!transferred) {
             // 回退到标准Forge Energy
@@ -442,18 +391,12 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：在整个感应塔网络中分配能量（迭代版本，替代递归）
-     * 使用广度优先遍历（队列），避免递归栈开销和临时对象创建
-     * 
-     * @param amount 要分配的能量
-     * @param simulate 是否模拟
-     * @param visited 已访问的塔的位置集合（防止循环）
-     * @return 实际分配的能量
+     * 在塔网络中分配能量（队列遍历，避免递归）。
      */
     private long distributeEnergyInNetwork(long amount, boolean simulate, Set<BlockPos> visited) {
         if (level == null || amount <= 0) return 0;
         
-        // 使用队列进行广度优先遍历，避免递归
+        // 使用队列遍历
         java.util.Queue<WirelessEnergyTowerBlockEntity> towerQueue = new java.util.LinkedList<>();
         towerQueue.add(this);
         visited.add(this.worldPosition);
@@ -628,14 +571,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：尝试使用Flux Networks接口插入能量（支持Long）
-     * 使用缓存的反射方法，避免重复 Class.forName 和 getMethod
-     * 
-     * @param target 目标方块实体
-     * @param side 插入方向
-     * @param amount 要插入的能量
-     * @param simulate 是否模拟
-     * @return 实际插入的能量
+     * 尝试使用 Flux Networks 接口插入能量。
      */
     private long tryInsertFluxEnergy(BlockEntity target, Direction side, long amount, boolean simulate) {
         initFluxReflection(); // 确保已初始化
@@ -659,8 +595,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：直接推送能量到格雷科技设备（用于能量分配）
-     * 使用缓存的反射 Capability，减少重复查找
+     * 直接推送能量到 GregTech 设备。
      */
     private long tryPushGTEnergyDirect(BlockEntity target, long amountFE, boolean simulate) {
         initGTReflection(); // 确保已初始化
@@ -706,8 +641,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
 
 
     /**
-     * 🔥 优化：尝试推送能量到GregTech CEu机器
-     * 使用缓存的 Capability，能量转换：4 FE = 1 EU
+     * 尝试推送能量到 GregTech CEu 机器（4 FE = 1 EU）。
      */
     private boolean tryPushGTEnergy(BlockEntity target) {
         initGTReflection(); // 确保已初始化
@@ -894,8 +828,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：使用Flux Networks接口推送到格雷科技
-     * 使用缓存的 Method 对象
+     * 使用 Flux Networks 接口向 GregTech 容器推送能量。
      */
     private boolean pushFluxToGT(Object sourceFlux, Object container, Direction side,
                                   long voltage, long amperage, long demand) {
@@ -1013,15 +946,14 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 性能优化：获取邻居能量源（带缓存版本）
-     * 减少重复扫描6个方向和反射调用，缓存有效期2秒
+     * 获取邻居能量源（带缓存）。
      */
     private Object getNeighborEnergySourceCached() {
         if (level == null) return null;
         
         long currentTick = level.getGameTime();
         
-        // 1. 检查缓存是否有效
+        // 检查缓存是否有效
         if (energySourceCache != null) {
             long age = currentTick - energySourceCache.lastValidatedTick;
             if (age < CACHE_VALIDITY_TICKS) {
@@ -1036,11 +968,11 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
             energySourceCache = null;
         }
         
-        // 2. 初始化反射（如果尚未初始化）
+        // 初始化反射（如果尚未初始化）
         initFluxReflection();
         initGTReflection();
         
-        // 3. 扫描邻居并建立缓存（按优先级：Flux > Long > Forge）
+        // 扫描邻居并建立缓存（按优先级：Flux > Long > Forge）
         for (Direction dir : Direction.values()) {
             BlockPos neighborPos = worldPosition.relative(dir);
             BlockEntity neighborBE = level.getBlockEntity(neighborPos);
@@ -1119,8 +1051,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：使用Flux Networks接口推送能量
-     * 使用缓存的 Capability 和 Method 对象
+     * 使用 Flux Networks 接口推送能量。
      */
     private boolean pushFluxEnergy(Object sourceFlux, BlockEntity target) {
         if (FLUX_CAPABILITY == null) return false; // Flux 未安装
@@ -1395,8 +1326,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：检查是否为Flux Networks的能量能力
-     * 使用缓存的 Capability 对象
+     * 判断是否为 Flux Networks 能量能力。
      */
     private boolean isFluxEnergyCapability(Capability<?> cap) {
         initFluxReflection(); // 确保已初始化
@@ -1404,8 +1334,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：创建通用能量存储（同时支持标准接口和Flux Networks接口）
-     * 使用缓存的反射结果，这样可以防止AppliedFlux等模组尝试强制转换时崩溃
+     * 创建同时支持 IEnergyStorage/ILongEnergyStorage/IFNEnergyStorage 的代理（兼容 AppliedFlux）。
      */
     private Object createUniversalEnergyStorage(Direction side) {
         TowerEnergyStorage baseStorage = new TowerEnergyStorage(side);
@@ -1644,8 +1573,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：尝试使用Flux Networks接口提取能量
-     * 使用缓存的 Capability 和 Method 对象
+     * 尝试使用 Flux Networks 接口提取能量。
      */
     private long tryExtractFluxEnergy(BlockEntity be, Direction side, long maxExtract, boolean simulate) {
         if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
@@ -1727,8 +1655,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：尝试获取Flux Networks的能量存储量
-     * 使用缓存的 Capability 和 Method 对象
+     * 尝试获取 Flux Networks 的能量存储量。
      */
     private long tryGetFluxEnergyStored(BlockEntity be, Direction side) {
         if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
@@ -1747,8 +1674,7 @@ public class WirelessEnergyTowerBlockEntity extends AENetworkBlockEntity impleme
     }
     
     /**
-     * 🔥 优化：尝试获取Flux Networks的最大能量存储量
-     * 使用缓存的 Capability 和 Method 对象
+     * 尝试获取 Flux Networks 的最大能量存储量。
      */
     private long tryGetFluxMaxEnergyStored(BlockEntity be, Direction side) {
         if (FLUX_CAPABILITY == null) return 0L; // Flux 未安装
