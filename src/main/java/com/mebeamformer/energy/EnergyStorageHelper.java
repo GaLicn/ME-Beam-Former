@@ -8,19 +8,12 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * NeoForge 1.21.1 能量存储辅助类
- * 统一处理标准能量、Flux Networks Long能量和GregTech能量
- */
 public class EnergyStorageHelper {
     
-    // Flux Networks 反射缓存
+    // Flux Networks（软依赖，反射）
     private static volatile boolean FLUX_INITIALIZED = false;
     private static Object FLUX_CAPABILITY = null;
     
-    /**
-     * 初始化 Flux Networks 反射（延迟加载）
-     */
     private static void initFluxReflection() {
         if (FLUX_INITIALIZED) return;
         synchronized (EnergyStorageHelper.class) {
@@ -30,36 +23,26 @@ public class EnergyStorageHelper {
                 java.lang.reflect.Field blockCapField = fluxCapClass.getField("BLOCK");
                 FLUX_CAPABILITY = blockCapField.get(null);
             } catch (Exception e) {
-                // Flux Networks 未安装
             }
             FLUX_INITIALIZED = true;
         }
     }
     
-    /**
-     * 尝试从方块实体提取能量（支持多种能量系统）
-     * 优先级：Flux Networks Long > GregTech > 标准能量
-     * 
-     * @return 实际提取的能量，-1表示没有能量接口
-     */
     public static long extractEnergy(BlockEntity be, @Nullable Direction side, long maxExtract, boolean simulate) {
         if (be == null || be.isRemoved()) return -1;
         Level level = be.getLevel();
         if (level == null) return -1;
-        
-        // 1. 尝试Flux Networks Long能量（如果已安装）
+
         long fluxExtracted = tryExtractFluxEnergy(be, level, side, maxExtract, simulate);
         if (fluxExtracted >= 0) {
             return fluxExtracted;
         }
-        
-        // 2. 尝试GregTech能量（如果已安装）
+
         long gtExtracted = tryExtractGTEnergy(be, level, side, maxExtract, simulate);
         if (gtExtracted >= 0) {
             return gtExtracted;
         }
-        
-        // 3. 标准能量接口（转换为int）
+
         IEnergyStorage normalCap = level.getCapability(
             Capabilities.EnergyStorage.BLOCK,
             be.getBlockPos(),
@@ -75,30 +58,21 @@ public class EnergyStorageHelper {
         return -1; // 没有能量接口
     }
     
-    /**
-     * 尝试向方块实体插入能量（支持多种能量系统）
-     * 优先级：Flux Networks Long > GregTech > 标准能量
-     * 
-     * @return 实际插入的能量，-1表示没有能量接口
-     */
     public static long insertEnergy(BlockEntity be, @Nullable Direction side, long maxInsert, boolean simulate) {
         if (be == null || be.isRemoved()) return -1;
         Level level = be.getLevel();
         if (level == null) return -1;
-        
-        // 1. 尝试Flux Networks Long能量（如果已安装）
+
         long fluxInserted = tryInsertFluxEnergy(be, level, side, maxInsert, simulate);
         if (fluxInserted >= 0) {
             return fluxInserted;
         }
-        
-        // 2. 尝试GregTech能量（如果已安装）
+
         long gtInserted = tryInsertGTEnergy(be, level, side, maxInsert, simulate);
         if (gtInserted >= 0) {
             return gtInserted;
         }
-        
-        // 3. 标准能量接口（转换为int）
+
         IEnergyStorage normalCap = level.getCapability(
             Capabilities.EnergyStorage.BLOCK,
             be.getBlockPos(),
@@ -114,15 +88,11 @@ public class EnergyStorageHelper {
         return -1; // 没有能量接口
     }
     
-    /**
-     * 检查方块实体是否可以提取能量
-     */
     public static boolean canExtract(BlockEntity be, @Nullable Direction side) {
         if (be == null || be.isRemoved()) return false;
         Level level = be.getLevel();
         if (level == null) return false;
-        
-        // 检查Flux Networks（通过反射）
+
         initFluxReflection();
         if (FLUX_CAPABILITY != null) {
             try {
@@ -144,8 +114,7 @@ public class EnergyStorageHelper {
             } catch (Exception ignored) {
             }
         }
-        
-        // 检查标准能量
+
         IEnergyStorage normalCap = level.getCapability(
             Capabilities.EnergyStorage.BLOCK,
             be.getBlockPos(),
@@ -156,15 +125,11 @@ public class EnergyStorageHelper {
         return normalCap != null && normalCap.canExtract();
     }
     
-    /**
-     * 检查方块实体是否可以接收能量
-     */
     public static boolean canReceive(BlockEntity be, @Nullable Direction side) {
         if (be == null || be.isRemoved()) return false;
         Level level = be.getLevel();
         if (level == null) return false;
-        
-        // 检查Flux Networks（通过反射）
+
         initFluxReflection();
         if (FLUX_CAPABILITY != null) {
             try {
@@ -187,7 +152,6 @@ public class EnergyStorageHelper {
             }
         }
         
-        // 检查标准能量
         IEnergyStorage normalCap = level.getCapability(
             Capabilities.EnergyStorage.BLOCK,
             be.getBlockPos(),
@@ -198,15 +162,11 @@ public class EnergyStorageHelper {
         return normalCap != null && normalCap.canReceive();
     }
     
-    /**
-     * 获取方块实体存储的能量
-     */
     public static long getEnergyStored(BlockEntity be, @Nullable Direction side) {
         if (be == null || be.isRemoved()) return 0;
         Level level = be.getLevel();
         if (level == null) return 0;
-        
-        // 尝试Flux Networks（通过反射）
+
         initFluxReflection();
         if (FLUX_CAPABILITY != null) {
             try {
@@ -226,8 +186,7 @@ public class EnergyStorageHelper {
             } catch (Exception ignored) {
             }
         }
-        
-        // 标准能量
+
         IEnergyStorage normalCap = level.getCapability(
             Capabilities.EnergyStorage.BLOCK,
             be.getBlockPos(),
@@ -237,20 +196,12 @@ public class EnergyStorageHelper {
         );
         return normalCap != null ? normalCap.getEnergyStored() : 0;
     }
-    
-    // ==================== Flux Networks 能量支持 ====================
-    
-    /**
-     * 尝试从 Flux Networks 机器提取能量（通过反射）
-     * 
-     * @return 实际提取的能量（FE），-1表示没有Flux接口或Flux未安装
-     */
+
     private static long tryExtractFluxEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxExtract, boolean simulate) {
         initFluxReflection();
         if (FLUX_CAPABILITY == null) return -1;
         
         try {
-            // 通过反射获取Flux能量容器
             java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
                 "getCapability",
                 net.neoforged.neoforge.capabilities.BlockCapability.class,
@@ -263,32 +214,23 @@ public class EnergyStorageHelper {
             Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
             
             if (fluxCap != null) {
-                // 检查是否可以提取
                 java.lang.reflect.Method canExtractMethod = fluxCap.getClass().getMethod("canExtract");
                 if ((Boolean) canExtractMethod.invoke(fluxCap)) {
-                    // 提取能量
                     java.lang.reflect.Method extractMethod = fluxCap.getClass().getMethod("extractEnergyL", long.class, boolean.class);
                     return (Long) extractMethod.invoke(fluxCap, maxExtract, simulate);
                 }
             }
         } catch (Exception e) {
-            // Flux调用失败或不兼容
         }
         
         return -1;
     }
     
-    /**
-     * 尝试向 Flux Networks 机器插入能量（通过反射）
-     * 
-     * @return 实际插入的能量（FE），-1表示没有Flux接口或Flux未安装
-     */
     private static long tryInsertFluxEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxInsert, boolean simulate) {
         initFluxReflection();
         if (FLUX_CAPABILITY == null) return -1;
         
         try {
-            // 通过反射获取Flux能量容器
             java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
                 "getCapability",
                 net.neoforged.neoforge.capabilities.BlockCapability.class,
@@ -301,37 +243,25 @@ public class EnergyStorageHelper {
             Object fluxCap = getCapMethod.invoke(level, FLUX_CAPABILITY, be.getBlockPos(), be.getBlockState(), be, side);
             
             if (fluxCap != null) {
-                // 检查是否可以接收
                 java.lang.reflect.Method canReceiveMethod = fluxCap.getClass().getMethod("canReceive");
                 if ((Boolean) canReceiveMethod.invoke(fluxCap)) {
-                    // 插入能量
                     java.lang.reflect.Method receiveMethod = fluxCap.getClass().getMethod("receiveEnergyL", long.class, boolean.class);
                     return (Long) receiveMethod.invoke(fluxCap, maxInsert, simulate);
                 }
             }
         } catch (Exception e) {
-            // Flux调用失败或不兼容
         }
         
         return -1;
     }
-    
-    // ==================== GregTech 能量支持 ====================
-    
-    /**
-     * 尝试从 GregTech 机器提取能量（通过反射）
-     * 
-     * @return 实际提取的能量（FE），-1表示没有GT接口或GT未安装
-     */
+
     private static long tryExtractGTEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxExtractFE, boolean simulate) {
         if (!GTEnergyAdapter.isGTAvailable()) return -1;
         
         try {
             Object gtCap = GTEnergyAdapter.getGTCapability();
             if (gtCap == null) return -1;
-            
-            // 通过反射获取GT能量容器（因为类型在编译时未知）
-            // 使用Level.getCapability的反射版本
+
             java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
                 "getCapability",
                 net.neoforged.neoforge.capabilities.BlockCapability.class,
@@ -344,12 +274,10 @@ public class EnergyStorageHelper {
             Object gtContainer = getCapMethod.invoke(level, gtCap, be.getBlockPos(), be.getBlockState(), be, side);
             
             if (gtContainer != null) {
-                // 通过反射调用GT方法
                 java.lang.reflect.Method outputsEnergyMethod = gtContainer.getClass().getMethod("outputsEnergy", Direction.class);
                 boolean canOutput = (Boolean) outputsEnergyMethod.invoke(gtContainer, side);
                 
                 if (canOutput) {
-                    // 获取可提取的能量（EU）
                     java.lang.reflect.Method getEnergyStoredMethod = gtContainer.getClass().getMethod("getEnergyStored");
                     long storedEU = (Long) getEnergyStoredMethod.invoke(gtContainer);
                     
@@ -358,7 +286,6 @@ public class EnergyStorageHelper {
                         long toExtractEU = Math.min(storedEU, maxExtractEU);
                         
                         if (!simulate) {
-                            // changeEnergy(负数) = 提取能量
                             java.lang.reflect.Method changeEnergyMethod = gtContainer.getClass().getMethod("changeEnergy", long.class);
                             long extractedEU = -(Long) changeEnergyMethod.invoke(gtContainer, -toExtractEU);
                             return GTEnergyAdapter.euToFE(extractedEU);
@@ -369,25 +296,18 @@ public class EnergyStorageHelper {
                 }
             }
         } catch (Exception e) {
-            // GT调用失败或不兼容
         }
         
         return -1;
     }
     
-    /**
-     * 尝试向 GregTech 机器插入能量（通过反射）
-     * 
-     * @return 实际插入的能量（FE），-1表示没有GT接口或GT未安装
-     */
     private static long tryInsertGTEnergy(BlockEntity be, Level level, @Nullable Direction side, long maxInsertFE, boolean simulate) {
         if (!GTEnergyAdapter.isGTAvailable()) return -1;
         
         try {
             Object gtCap = GTEnergyAdapter.getGTCapability();
             if (gtCap == null) return -1;
-            
-            // 通过反射获取GT能量容器（因为类型在编译时未知）
+
             java.lang.reflect.Method getCapMethod = level.getClass().getMethod(
                 "getCapability",
                 net.neoforged.neoforge.capabilities.BlockCapability.class,
@@ -400,12 +320,10 @@ public class EnergyStorageHelper {
             Object gtContainer = getCapMethod.invoke(level, gtCap, be.getBlockPos(), be.getBlockState(), be, side);
             
             if (gtContainer != null) {
-                // 通过反射调用GT方法
                 java.lang.reflect.Method inputsEnergyMethod = gtContainer.getClass().getMethod("inputsEnergy", Direction.class);
                 boolean canInput = (Boolean) inputsEnergyMethod.invoke(gtContainer, side);
                 
                 if (canInput) {
-                    // 获取电压和电流
                     java.lang.reflect.Method getInputVoltageMethod = gtContainer.getClass().getMethod("getInputVoltage");
                     java.lang.reflect.Method getInputAmperageMethod = gtContainer.getClass().getMethod("getInputAmperage");
                     java.lang.reflect.Method getEnergyCanBeInsertedMethod = gtContainer.getClass().getMethod("getEnergyCanBeInserted");
@@ -418,13 +336,11 @@ public class EnergyStorageHelper {
                         long maxInsertEU = GTEnergyAdapter.feToEU(maxInsertFE);
                         long toInsertEU = Math.min(canInsertEU, maxInsertEU);
                         
-                        // 限制到电压*电流
                         long maxByVoltageAmperage = voltage * amperage;
                         toInsertEU = Math.min(toInsertEU, maxByVoltageAmperage);
                         
                         if (toInsertEU > 0) {
                             if (!simulate) {
-                                // acceptEnergyFromNetwork(side, voltage, amperage)
                                 long actualVoltage = Math.min(voltage, toInsertEU);
                                 long actualAmperage = Math.min(amperage, toInsertEU / Math.max(actualVoltage, 1));
                                 
@@ -442,7 +358,6 @@ public class EnergyStorageHelper {
                 }
             }
         } catch (Exception e) {
-            // GT调用失败或不兼容
         }
         
         return -1;
