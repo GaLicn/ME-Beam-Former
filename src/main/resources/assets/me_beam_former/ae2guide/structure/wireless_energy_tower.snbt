@@ -1,0 +1,15 @@
+{
+    DataVersion: 3337,
+    size: [1, 3, 1],
+    data: [
+        {pos: [0, 0, 0], state: "me_beam_former:wireless_energy_tower{part:0}"},
+        {pos: [0, 1, 0], state: "me_beam_former:wireless_energy_tower{part:1}"},
+        {pos: [0, 2, 0], state: "me_beam_former:wireless_energy_tower{part:2}"}
+    ],
+    entities: [],
+    palette: [
+        "me_beam_former:wireless_energy_tower{part:0}",
+        "me_beam_former:wireless_energy_tower{part:1}",
+        "me_beam_former:wireless_energy_tower{part:2}"
+    ]
+}
