@@ -19,15 +19,11 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
 
     @Override
     public int getViewDistance() {
-        // 扩大渲染距离以确保远距离光束能够被渲染
-        // 返回一个足够大的值以覆盖最大可能的光束长度（32格）加上额外缓冲
         return 256;
     }
 
     @Override
     public boolean shouldRenderOffScreen(BeamFormerBlockEntity te) {
-        // 允许即使BlockEntity不在屏幕上也渲染光束
-        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
         return te != null && te.getBeamLength() > 0;
     }
 
@@ -37,13 +33,10 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         BlockState state = te.getBlockState();
         if (!(state.getBlock() instanceof BeamFormerBlock)) return;
         
-        // 使用BlockEntity的shouldRenderBeam方法来决定是否渲染
         if (!te.shouldRenderBeam()) return;
         
-        // 渲染条件仅依据服务端同步过来的 beamLength 和可见性检查
         Direction dir = state.getValue(BeamFormerBlock.FACING);
         int len = Math.max(0, te.getBeamLength());
-        // 方块版：仅在长度>0时渲染，不再使用"BEAMING"时的0.5格占位，避免断线后残留
         double visibleLen = len;
         if (visibleLen <= 0) return;
 
@@ -53,7 +46,6 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
         if (!isPathClearForRender(level, pos, dir, checkLen)) return;
 
-        // 颜色：尝试从背面相邻的线缆总线获取 AE 颜色（最鲜艳变体），否则默认为白色
         float r = 1f, g = 1f, b = 1f;
         BlockPos back = pos.relative(dir.getOpposite());
         var backBe = level.getBlockEntity(back);
@@ -68,7 +60,6 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
             }
         }
 
-        // 方块形态使用更粗的光束（例如 0.28f）
         float thickness = 0.28f;
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
                 poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay, thickness);

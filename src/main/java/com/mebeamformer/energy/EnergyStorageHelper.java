@@ -10,7 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 public class EnergyStorageHelper {
     
-    // Flux Networks（软依赖，反射）
     private static volatile boolean FLUX_INITIALIZED = false;
     private static Object FLUX_CAPABILITY = null;
     
@@ -55,7 +54,7 @@ public class EnergyStorageHelper {
             return normalCap.extractEnergy(maxInt, simulate);
         }
         
-        return -1; // 没有能量接口
+        return -1;
     }
     
     public static long insertEnergy(BlockEntity be, @Nullable Direction side, long maxInsert, boolean simulate) {
@@ -85,7 +84,7 @@ public class EnergyStorageHelper {
             return normalCap.receiveEnergy(maxInt, simulate);
         }
         
-        return -1; // 没有能量接口
+        return -1;
     }
     
     public static boolean canExtract(BlockEntity be, @Nullable Direction side) {

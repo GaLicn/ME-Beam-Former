@@ -7,21 +7,12 @@ import java.lang.reflect.Proxy;
 
 /**
  * Flux Networks动态代理适配器
- * 软依赖：无需编译时依赖Flux Networks，在运行时动态实现IFNEnergyStorage接口
- * 
- * NeoForge 1.21.1: 使用动态代理桥接我们的ILongEnergyStorage和Flux的IFNEnergyStorage
  */
 public class FluxEnergyAdapter {
     
     private static volatile Class<?> FLUX_INTERFACE_CLASS = null;
     private static volatile boolean FLUX_CHECKED = false;
     
-    /**
-     * 创建Flux Networks能量适配器（动态代理）
-     * 
-     * @param tower 无线能源感应塔
-     * @return 实现了IFNEnergyStorage接口的动态代理，如果Flux未安装返回null
-     */
     public static Object createFluxAdapter(WirelessEnergyTowerBlockEntity tower) {
         if (!FLUX_CHECKED) {
             synchronized (FluxEnergyAdapter.class) {

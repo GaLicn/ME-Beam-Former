@@ -20,15 +20,11 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
 
     @Override
     public int getViewDistance() {
-        // 扩大渲染距离以确保远距离光束能够被渲染
-        // 返回一个足够大的值以覆盖可能的远距离光束
         return 256;
     }
 
     @Override
     public boolean shouldRenderOffScreen(OmniBeamFormerBlockEntity be) {
-        // 允许即使BlockEntity不在屏幕上也渲染光束
-        // 这对于长距离光束至关重要，因为光束可能在视野中但两端都不在
         var targets = be != null ? be.getClientActiveTargets() : null;
         return targets != null && !targets.isEmpty();
     }
@@ -41,7 +37,6 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         Level level = be.getLevel();
         if (level == null) return;
 
-        // 颜色：从任意相邻 IColorableBlockEntity 读取最鲜艳变体，否则白色
         float r = 1f, g = 1f, b = 1f;
         BlockPos pos = be.getBlockPos();
         for (Direction d : Direction.values()) {
@@ -62,66 +57,52 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         var targets = be.getClientActiveTargets();
         if (targets == null || targets.isEmpty()) return;
         
-        // 获取方块朝向
         Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
         
-        // 厚度与普通光束成型器一致，稍稍调细
         float thickness = 0.08f;
         for (BlockPos t : targets) {
-            // 获取目标方块的朝向
             BlockState targetState = level.getBlockState(t);
             Direction targetFacing = Direction.SOUTH; // 默认朝向
             
-            // 检查目标方块是否有FACING属性
             if (targetState.getBlock() instanceof BeamFormerBlock) {
                 targetFacing = targetState.getValue(BeamFormerBlock.FACING);
             } else if (targetState.getBlock() instanceof OmniBeamFormerBlock) {
                 targetFacing = targetState.getValue(OmniBeamFormerBlock.FACING);
             }
             
-            // 计算目标方块中心点向其face方向偏移0.25个方块后的位置
             float targetX = (float) t.getX() + 0.5f + targetFacing.getStepX() * 0.25f;
             float targetY = (float) t.getY() + 0.5f + targetFacing.getStepY() * 0.25f;
             float targetZ = (float) t.getZ() + 0.5f + targetFacing.getStepZ() * 0.25f;
             
-            // 计算起点位置：当前方块中心点向face方向偏移0.25个方块
             float startX = (float) pos.getX() + 0.5f + facing.getStepX() * 0.25f;
             float startY = (float) pos.getY() + 0.5f + facing.getStepY() * 0.25f;
             float startZ = (float) pos.getZ() + 0.5f + facing.getStepZ() * 0.25f;
             
-            // 计算从起点到终点的向量
             float vx = targetX - startX;
             float vy = targetY - startY;
             float vz = targetZ - startZ;
             
-            // 计算向量长度用于归一化
             double vectorLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
-            if (vectorLength <= 0.2) continue; // 如果距离太短，跳过这条光束
+            if (vectorLength <= 0.2) continue;
             
-            // 归一化向量
             float normalizedVx = (float) (vx / vectorLength);
             float normalizedVy = (float) (vy / vectorLength);
             float normalizedVz = (float) (vz / vectorLength);
             
-            // 起点向终点方向缩进0.15个方块
             float adjustedStartX = startX + normalizedVx * 0.2f;
             float adjustedStartY = startY + normalizedVy * 0.2f;
             float adjustedStartZ = startZ + normalizedVz * 0.2f;
             
-            // 终点向光束方向延伸0.1个方块
             float adjustedTargetX = targetX + normalizedVx * 0.1f;
             float adjustedTargetY = targetY + normalizedVy * 0.1f;
             float adjustedTargetZ = targetZ + normalizedVz * 0.1f;
             
-            // 重新计算调整后的向量
             float adjustedVx = adjustedTargetX - adjustedStartX;
             float adjustedVy = adjustedTargetY - adjustedStartY;
             float adjustedVz = adjustedTargetZ - adjustedStartZ;
             
-            // 保存当前的PoseStack状态
             poseStack.pushPose();
             
-            // 将渲染原点移动到调整后的起点位置（相对于方块中心）
             poseStack.translate(
                 adjustedStartX - (pos.getX() + 0.5f), 
                 adjustedStartY - (pos.getY() + 0.5f), 
@@ -130,7 +111,6 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             
             BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, adjustedVx, adjustedVy, adjustedVz, r, g, b, packedLight, packedOverlay, thickness);
             
-            // 恢复PoseStack状态
             poseStack.popPose();
         }
     }

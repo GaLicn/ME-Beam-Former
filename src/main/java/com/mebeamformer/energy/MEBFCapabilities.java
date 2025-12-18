@@ -9,8 +9,6 @@ public final class MEBFCapabilities {
 
     /**
      * 扩展的能量存储能力，支持Long.MAX_VALUE的能量传输
-     * 仅在你的模组需要传输超过Integer.MAX_VALUE的能量时使用此能力
-     * 无线能源感应塔会同时处理NeoForge Energy和此能力
      */
     public static final BlockCapability<ILongEnergyStorage, Direction> LONG_ENERGY_STORAGE = 
             BlockCapability.createSided(
