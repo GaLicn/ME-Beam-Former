@@ -24,6 +24,9 @@ public class WirelessEnergyNetwork {
     
     private final Map<Level, List<WirelessEnergyTowerBlockEntity>> towersByLevel = new ConcurrentHashMap<>();
     
+    private static final int TOWER_RANGE_XZ = 20;
+    private static final int TOWER_RANGE_Y = 256;
+    
     // 防重复执行
     private long lastExecutedTick = -1;
     private boolean executedByMonitor = false;
@@ -159,6 +162,17 @@ public class WirelessEnergyNetwork {
             if (targetBE == null) {
                 tower.removeLink(targetPos);
                 continue;
+            }
+            
+            if (!(targetBE instanceof WirelessEnergyTowerBlockEntity)) {
+                BlockPos sourcePos = tower.getBlockPos();
+                int dx = Math.abs(targetPos.getX() - sourcePos.getX());
+                int dy = Math.abs(targetPos.getY() - sourcePos.getY());
+                int dz = Math.abs(targetPos.getZ() - sourcePos.getZ());
+                if (dx > TOWER_RANGE_XZ || dz > TOWER_RANGE_XZ || dy > TOWER_RANGE_Y) {
+                    tower.removeLink(targetPos);
+                    continue;
+                }
             }
             
             tower.pushEnergyToTarget(targetBE);

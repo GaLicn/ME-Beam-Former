@@ -19,7 +19,7 @@
   "tooltip.me_beam_former.binding.tower_to_tower_linked": "能源塔电网已连接：(%s, %s, %s) ↔ (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_to_tower_unlinked": "能源塔电网已断开：(%s, %s, %s) ✗ (%s, %s, %s)",
   "tooltip.me_beam_former.binding.tower_to_tower_needs_normal_click": "感应塔之间的连接请使用右键（不按Shift）",
-  "tooltip.me_beam_former.binding.tower_out_of_range": "感应塔连接距离超出范围！限制：水平16x16，垂直256格",
+  "tooltip.me_beam_former.binding.tower_out_of_range": "感应塔连接距离超出范围！限制：水平20x20，垂直256格",
   "tooltip.me_beam_former.binding.tower_needs_shift": "无线能源感应塔需要 Shift+右键 来绑定机器",
   "tooltip.me_beam_former.binding.omni_only": "全向光束成型器只能连接其他全向光束成型器",
   "tooltip.me_beam_former.binding.cleared": "已清除源成型器",

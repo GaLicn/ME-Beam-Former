@@ -25,6 +25,8 @@ public class LaserBindingTool extends Item {
     private static final String TAG_SOURCE_TYPE = "SourceType";
     private static final String TYPE_TOWER = "tower";
     private static final String TYPE_OMNI = "omni";
+    private static final int TOWER_RANGE_XZ = 20;
+    private static final int TOWER_RANGE_Y = 256;
 
     public LaserBindingTool(Properties props) {
         super(props);
@@ -154,7 +156,16 @@ public class LaserBindingTool extends Item {
                         
                         WirelessEnergyTowerBlockEntity sourceEntity = getTowerBlockEntity(level, source);
                         if (sourceEntity != null) {
-                            // 无线能源感应塔没有距离限制
+                            // 检查距离限制：水平范围20x20（增加了4格），垂直范围256
+                            int dx = Math.abs(pos.getX() - source.getX());
+                            int dy = Math.abs(pos.getY() - source.getY());
+                            int dz = Math.abs(pos.getZ() - source.getZ());
+ 
+                            if (dx > TOWER_RANGE_XZ || dz > TOWER_RANGE_XZ || dy > TOWER_RANGE_Y) {
+                                // 超出连接范围
+                                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_out_of_range"), true);
+                                return InteractionResult.SUCCESS;
+                            }
                             
                             // 检查是否已经连接
                             if (sourceEntity.getLinks().contains(pos)) {
@@ -206,7 +217,7 @@ public class LaserBindingTool extends Item {
             } else {
                 tag.putString(TAG_SOURCE_TYPE, TYPE_OMNI);
                 stack.set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(tag));
-            player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.set", pos.getX(), pos.getY(), pos.getZ()), true);
+                player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.set", pos.getX(), pos.getY(), pos.getZ()), true);
             }
             return InteractionResult.CONSUME;
         } else {
@@ -256,7 +267,7 @@ public class LaserBindingTool extends Item {
                 int dy = Math.abs(pos.getY() - source.getY());
                 int dz = Math.abs(pos.getZ() - source.getZ());
                 
-                if (dx > 20 || dz > 20 || dy > 256) {
+                if (dx > TOWER_RANGE_XZ || dz > TOWER_RANGE_XZ || dy > TOWER_RANGE_Y) {
                     // 超出连接范围
                     if (player != null) {
                         player.displayClientMessage(net.minecraft.network.chat.Component.translatable("tooltip.me_beam_former.binding.tower_out_of_range"), true);
