@@ -209,12 +209,6 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     public int getBeamLength() { return beamLength; }
     public boolean shouldRenderBeam() {
-        // 渲染光束的条件：
-        // 1. 没有隐藏光束
-        // 2. 有光束长度或有连接的目标
-        // 3. 本端有电（isPowered）
-        // 4. 如果有连接目标，目标也要有电
-        // 注意：不检查频道（isMissingChannel），因为频道不足不应影响物理连接的可见性
         if (hideBeam) return false;
         if (beamLength <= 0 && other == null) return false;
         
