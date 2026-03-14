@@ -10,10 +10,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import appeng.api.implementations.blockentities.IColorableBlockEntity;
-import appeng.api.util.AEColor;
 
 public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBlockEntity> {
     public OmniBeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
@@ -37,22 +34,8 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         Level level = be.getLevel();
         if (level == null) return;
 
-        float r = 1f, g = 1f, b = 1f;
         BlockPos pos = be.getBlockPos();
-        for (Direction d : Direction.values()) {
-            BlockEntity adj = level.getBlockEntity(pos.relative(d));
-            if (adj instanceof IColorableBlockEntity cbe) {
-                AEColor color = cbe.getColor();
-                if (color != null) {
-                    int hex = color.blackVariant;
-                    float scale = 255f;
-                    r = ((hex >> 16) & 0xFF) / scale;
-                    g = ((hex >> 8) & 0xFF) / scale;
-                    b = (hex & 0xFF) / scale;
-                    break;
-                }
-            }
-        }
+        float[] sourceColor = BeamRenderHelper.resolveBlockEndpointColor(level, pos);
 
         var targets = be.getClientActiveTargets();
         if (targets == null || targets.isEmpty()) return;
@@ -100,6 +83,9 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             float adjustedVx = adjustedTargetX - adjustedStartX;
             float adjustedVy = adjustedTargetY - adjustedStartY;
             float adjustedVz = adjustedTargetZ - adjustedStartZ;
+
+            float[] targetColor = BeamRenderHelper.resolveBlockEndpointColor(level, t);
+            float[] beamColor = BeamRenderHelper.blendEndpointColors(sourceColor, targetColor);
             
             poseStack.pushPose();
             
@@ -109,7 +95,18 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
                 adjustedStartZ - (pos.getZ() + 0.5f)
             );
             
-            BeamRenderHelper.renderColoredBeamVector(poseStack, buffers, adjustedVx, adjustedVy, adjustedVz, r, g, b, packedLight, packedOverlay, thickness);
+            BeamRenderHelper.renderColoredBeamVector(
+                    poseStack,
+                    buffers,
+                    adjustedVx,
+                    adjustedVy,
+                    adjustedVz,
+                    beamColor[0],
+                    beamColor[1],
+                    beamColor[2],
+                    packedLight,
+                    packedOverlay,
+                    thickness);
             
             poseStack.popPose();
         }

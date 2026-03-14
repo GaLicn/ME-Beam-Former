@@ -155,14 +155,23 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
             return;
         }
 
-        AEColor color = getHost().getColor();
-        float scale = 255f;
-        float r = ((color.blackVariant >> 16) & 0xFF) / scale;
-        float g = ((color.blackVariant >> 8) & 0xFF) / scale;
-        float b = (color.blackVariant & 0xFF) / scale;
+        float[] sourceColor = com.mebeamformer.client.render.BeamRenderHelper.getPartHostColor(getHost());
+        ScanResult scan = scanForTarget(level, blockEntity.getBlockPos(), side);
+        float[] targetColor = scan.target != null && scan.length == beamLength
+                ? com.mebeamformer.client.render.BeamRenderHelper.getPartHostColor(scan.target.getHost())
+                : null;
+        float[] beamColor = com.mebeamformer.client.render.BeamRenderHelper.blendEndpointColors(sourceColor, targetColor);
 
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeamForPart(
-                poseStack, buffers, side, beamLength, r, g, b, combinedLightIn, combinedOverlayIn);
+                poseStack,
+                buffers,
+                side,
+                beamLength,
+                beamColor[0],
+                beamColor[1],
+                beamColor[2],
+                combinedLightIn,
+                combinedOverlayIn);
     }
 
     @Override

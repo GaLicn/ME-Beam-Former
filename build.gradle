@@ -134,6 +134,7 @@ configurations {
 }
 
 dependencies {
+    implementation "curse.maven:ctm-267602:5587515"
     implementation "org.appliedenergistics:appliedenergistics2:19.2.15"
     implementation "org.appliedenergistics:guideme:2.5.1"
     implementation "curse.maven:jade-324717:6853386"

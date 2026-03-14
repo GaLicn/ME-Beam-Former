@@ -9,10 +9,8 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import static com.mebeamformer.block.BeamFormerBlock.STATUS;
-import appeng.api.implementations.blockentities.IColorableBlockEntity;
-import appeng.api.util.AEColor;
 
 public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity> {
     public BeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
@@ -46,23 +44,22 @@ public class BeamFormerBER implements BlockEntityRenderer<BeamFormerBlockEntity>
         int checkLen = len > 0 ? len : 1; // 相邻时也检查 1 格
         if (!isPathClearForRender(level, pos, dir, checkLen)) return;
 
-        float r = 1f, g = 1f, b = 1f;
-        BlockPos back = pos.relative(dir.getOpposite());
-        var backBe = level.getBlockEntity(back);
-        if (backBe instanceof IColorableBlockEntity cbe) {
-            AEColor color = cbe.getColor();
-            if (color != null) {
-                int hex = color.blackVariant;
-                float scale = 255f;
-                r = ((hex >> 16) & 0xFF) / scale;
-                g = ((hex >> 8) & 0xFF) / scale;
-                b = (hex & 0xFF) / scale;
-            }
-        }
+        float[] sourceColor = BeamRenderHelper.resolveBlockEndpointColor(level, pos);
+        float[] targetColor = BeamRenderHelper.resolveBlockEndpointColor(level, pos.relative(dir, len));
+        float[] beamColor = BeamRenderHelper.blendEndpointColors(sourceColor, targetColor);
 
         float thickness = 0.28f;
         com.mebeamformer.client.render.BeamRenderHelper.renderColoredBeam(
-                poseStack, buffers, dir, visibleLen, r, g, b, packedLight, packedOverlay, thickness);
+                poseStack,
+                buffers,
+                dir,
+                visibleLen,
+                beamColor[0],
+                beamColor[1],
+                beamColor[2],
+                packedLight,
+                packedOverlay,
+                thickness);
     }
 
     private boolean isPathClearForRender(Level level, BlockPos start, Direction dir, int length) {
