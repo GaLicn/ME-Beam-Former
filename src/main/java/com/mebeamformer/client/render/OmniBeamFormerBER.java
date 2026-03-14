@@ -11,6 +11,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBlockEntity> {
     public OmniBeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
@@ -24,6 +26,20 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
     public boolean shouldRenderOffScreen(OmniBeamFormerBlockEntity be) {
         var targets = be != null ? be.getClientActiveTargets() : null;
         return targets != null && !targets.isEmpty();
+    }
+
+    @Override
+    public boolean shouldRender(OmniBeamFormerBlockEntity be, Vec3 cameraPos) {
+        if (be == null) {
+            return false;
+        }
+
+        return isWithinViewDistance(this.getRenderBoundingBox(be), cameraPos, this.getViewDistance());
+    }
+
+    @Override
+    public AABB getRenderBoundingBox(OmniBeamFormerBlockEntity be) {
+        return be != null ? be.getRenderBoundingBox() : AABB.INFINITE;
     }
 
     @Override
@@ -110,5 +126,17 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             
             poseStack.popPose();
         }
+    }
+
+    private static boolean isWithinViewDistance(AABB bounds, Vec3 cameraPos, double maxDistance) {
+        double nearestX = Math.max(bounds.minX, Math.min(cameraPos.x, bounds.maxX));
+        double nearestY = Math.max(bounds.minY, Math.min(cameraPos.y, bounds.maxY));
+        double nearestZ = Math.max(bounds.minZ, Math.min(cameraPos.z, bounds.maxZ));
+
+        double dx = cameraPos.x - nearestX;
+        double dy = cameraPos.y - nearestY;
+        double dz = cameraPos.z - nearestZ;
+        double maxDistanceSq = maxDistance * maxDistance;
+        return dx * dx + dy * dy + dz * dz <= maxDistanceSq;
     }
 }
