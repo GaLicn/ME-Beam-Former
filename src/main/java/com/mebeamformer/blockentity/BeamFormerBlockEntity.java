@@ -1,375 +1,433 @@
 package com.mebeamformer.blockentity;
 
+import appeng.api.networking.GridFlags;
 import appeng.api.networking.GridHelper;
 import appeng.api.networking.IGridConnection;
+import appeng.api.networking.IGridNode;
 import appeng.api.networking.IManagedGridNode;
-import appeng.api.networking.GridFlags;
+import appeng.api.orientation.BlockOrientation;
 import appeng.api.util.AECableType;
 import appeng.blockentity.grid.AENetworkBlockEntity;
+import com.mebeamformer.ME_Beam_Former;
+import com.mebeamformer.block.BeamFormerBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.Level;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
+import org.jetbrains.annotations.Nullable;
 
-import com.mebeamformer.block.BeamFormerBlock;
-import com.mebeamformer.ME_Beam_Former;
 import java.util.EnumSet;
 import java.util.Set;
-import appeng.api.orientation.BlockOrientation;
-import appeng.api.orientation.RelativeSide;
 
 public class BeamFormerBlockEntity extends AENetworkBlockEntity {
-    private int beamLength = 0;
-    private IGridConnection connection = null;
-    private boolean hideBeam = false;
-    // 缓存当前暴露的背面方向；由于我们的朝向来自 BlockState.FACING，不一定触发 AE 的 onOrientationChanged，
-    // 因此在 serverTick 中检测并刷新暴露面，确保只有背面可连接。
-    private Direction lastExposedBack = null;
+    private static final int MAX_BEAM_RANGE = 32;
+
+    private int beamLength;
+    @Nullable
+    private IGridConnection connection;
+    @Nullable
+    private BeamFormerBlockEntity other;
+    private boolean hideBeam;
+    @Nullable
+    private Direction lastExposedBack;
 
     public BeamFormerBlockEntity(BlockPos pos, BlockState state) {
         super(ME_Beam_Former.BEAM_FORMER_BE.get(), pos, state);
-        // 关键：宣告本节点具备“致密容量”
-        this.getMainNode().setFlags(GridFlags.DENSE_CAPACITY);
+        getMainNode().setFlags(GridFlags.DENSE_CAPACITY);
     }
 
     @Override
     public AECableType getCableConnectionType(Direction dir) {
-        // 仅允许“背面”连接线缆：背面指方块朝向(FACING)的反方向
-        Direction facing = this.getBlockState().getValue(BeamFormerBlock.FACING);
-        if (dir == facing.getOpposite()) {
-            // 返回 SMART 以兼容普通智能/致密智能线缆，容量由 GridFlags.DENSE_CAPACITY 提供
-            return AECableType.SMART;
-        }
-        return AECableType.NONE; // 其他朝向不允许连接
+        return dir == getFacing().getOpposite() ? AECableType.SMART : AECableType.NONE;
     }
 
-    // 限制可暴露的 ME 连接面：仅“方块FACING的反面”。
-    // 直接依据本方块状态的 FACING 计算，而非 AE 的 BlockOrientation，避免二者坐标系不一致导致朝向错乱。
     @Override
     public Set<Direction> getGridConnectableSides(BlockOrientation orientation) {
-        Direction facing = this.getBlockState().getValue(BeamFormerBlock.FACING);
-        return EnumSet.of(facing.getOpposite());
+        return EnumSet.of(getFacing().getOpposite());
     }
 
-    public int getBeamLength() { return beamLength; }
+    public int getBeamLength() {
+        return beamLength;
+    }
 
-    public boolean isHideBeam() { return hideBeam; }
+    public boolean isHideBeam() {
+        return hideBeam;
+    }
 
     public boolean shouldRenderBeam() {
         return !hideBeam && beamLength > 0;
     }
 
     public void toggleBeamVisibility() {
-        this.hideBeam = !this.hideBeam;
-        
-        // 同步到连接的另一端
-        if (this.connection != null) {
-            try {
-                var myNode = this.getMainNode().getNode();
-                if (myNode != null) {
-                    var otherNode = this.connection.getOtherSide(myNode);
-                    if (otherNode != null) {
-                        var owner = otherNode.getOwner();
-                        if (owner instanceof BeamFormerBlockEntity other) {
-                            other.hideBeam = this.hideBeam;
-                            other.markForUpdate();
-                            other.setChanged();
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        
-        this.markForUpdate();
-        this.setChanged();
+        setBeamHidden(!hideBeam);
     }
 
     public static void serverTick(Level level, BlockPos pos, BlockState state, BeamFormerBlockEntity be) {
-        // 若方块实体已被标记移除，避免任何状态写回，防止被挖掘时“复活”
         if (be.isRemoved()) {
             return;
         }
+
         Direction facing = state.getValue(BeamFormerBlock.FACING);
-        // 初始未接入网络或临时断电时，也应继续执行扫描/连接逻辑，由 AE2 负责合并电网并恢复供电。
-        // 强制仅暴露背面为可连接面
-        Direction back = facing.getOpposite();
-        if (be.lastExposedBack != back) {
-            be.getMainNode().setExposedOnSides(EnumSet.of(back));
-            be.lastExposedBack = back;
-        }
-        // 若主节点尚未创建（客户端/服务端初始化早期），清空光束并等待下一 tick 再尝试
-        var mainNode = be.getMainNode();
-        var aNode = (mainNode == null) ? null : mainNode.getNode();
-        if (aNode == null) {
-            int old = be.beamLength;
-            be.beamLength = 0;
-            if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
-                level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
-            }
-            if (old != 0) be.markForUpdate();
-            // 不强制断开 AE 连接；节点未创建时并不存在可销毁连接
+        be.syncExposedBack(facing.getOpposite());
+
+        IGridNode myNode = be.getMainNode().getNode();
+        if (myNode == null) {
+            BeamFormerBlockEntity partner = be.other;
+            be.disconnect();
+            be.applyVisualState(partner, 0);
+            be.updateStatus(partner, BeamFormerBlock.Status.ON);
             return;
         }
 
-        // 注意：即使本端离线/不供电，也允许继续向前扫描并尝试建立 AE 连接；
-        // 渲染仍然受在线/供电状态门控。
-        BlockPos cur = pos;
-        int max = 32;
-        int len = 0;
-        BeamFormerBlockEntity target = null;
-
-        for (int i = 0; i < max; i++) {
-            cur = cur.relative(facing);
-            BlockState bs = level.getBlockState(cur);
-            // 阻挡：可遮挡且非空气
-            if (bs.canOcclude() && !bs.isAir()) {
-                var obe = level.getBlockEntity(cur);
-                if (obe instanceof BeamFormerBlockEntity other) {
-                    // 必须对向
-                    Direction otherFacing = level.getBlockState(cur).getValue(BeamFormerBlock.FACING);
-                    if (otherFacing == facing.getOpposite()) {
-                        target = other;
-                        len = i; // 距离为中间空气格数
-                    }
-                }
-                break;
-            }
-            len = i + 1;
-            // 中途遇到成型器：
-            var pbe = level.getBlockEntity(cur);
-            if (pbe instanceof BeamFormerBlockEntity other) {
-                Direction otherFacing = level.getBlockState(cur).getValue(BeamFormerBlock.FACING);
-                // 同向：阻挡，终止，不形成连接
-                if (otherFacing == facing) { target = null; break; }
-                // 反向：即便对方不是可遮挡方块，也直接确定为目标并终止
-                if (otherFacing == facing.getOpposite()) { target = other; break; }
-            }
+        ScanResult scan = be.scanForTarget(level, pos, facing);
+        if (!be.hasConnectableTarget(scan.target)) {
+            BeamFormerBlockEntity partner = scan.target != null ? scan.target : be.other;
+            be.disconnect();
+            be.applyVisualState(partner, 0);
+            be.updateStatus(partner, BeamFormerBlock.Status.ON);
+            return;
         }
 
-        // 对端必须至少已创建节点；连接的建立不要求在线/上电（避免电力依赖的鸡生蛋问题）
-        if (target != null) {
-            var tManaged = target.getMainNode();
-            var tNode = (tManaged == null) ? null : tManaged.getNode();
-            if (tNode != null) {
-                // 建立/复用连接
-                be.tryConnect(target, len);
-
-                // 仅当两端都在线且上电时才渲染（保持 BEAMING）；否则清零渲染长度但保留连接
-                var aManaged = be.getMainNode();
-                boolean aOk = aManaged != null && aManaged.isOnline() && aManaged.isPowered();
-                boolean bOk = tManaged.isOnline() && tManaged.isPowered();
-                if (aOk && bOk) {
-                    if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.BEAMING) {
-                        level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.BEAMING), 3);
-                    }
-                } else {
-                    int oldA = be.beamLength;
-                    be.beamLength = 0;
-                    if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
-                        level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
-                    }
-                    if (oldA != 0) be.markForUpdate();
-
-                    BlockState tState = target.getBlockState();
-                    int oldB = target.beamLength;
-                    target.beamLength = 0;
-                    if (!target.isRemoved() && tState.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
-                        level.setBlock(target.getBlockPos(), tState.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
-                    }
-                    if (oldB != 0) target.markForUpdate();
-                }
-            }
-        } else {
-            int old = be.beamLength;
+        if (!be.ensureConnection(scan.target, scan.length)) {
+            BeamFormerBlockEntity partner = scan.target;
             be.disconnect();
-            if (!be.isRemoved() && state.getValue(BeamFormerBlock.STATUS) != BeamFormerBlock.Status.ON) {
-                level.setBlock(pos, state.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
-            }
-            be.beamLength = 0;
-            if (old != 0) be.markForUpdate();
+            be.applyVisualState(partner, 0);
+            be.updateStatus(partner, BeamFormerBlock.Status.ON);
+            return;
+        }
+
+        if (be.hasActiveBeam(scan.target)) {
+            be.applyVisualState(scan.target, scan.length);
+            be.updateStatus(scan.target, BeamFormerBlock.Status.BEAMING);
+        } else {
+            be.applyVisualState(scan.target, 0);
+            be.updateStatus(scan.target, BeamFormerBlock.Status.ON);
         }
     }
 
     public static void clientTick(Level level, BlockPos pos, BlockState state, BeamFormerBlockEntity be) {
-        // 客户端无需逻辑，渲染器会读取 beamLength
-    }
-
-    private void tryConnect(BeamFormerBlockEntity target, int len) {
-        IManagedGridNode a = this.getMainNode();
-        IManagedGridNode b = target.getMainNode();
-        if (a == null || b == null) return;
-        var aNode = a.getNode();
-        var bNode = b.getNode();
-        if (aNode == null || bNode == null) return; // not ready yet
-
-        // 若本端已持有连接且指向对端，直接刷新长度
-        if (this.connection != null) {
-            var other = this.connection.getOtherSide(aNode);
-            if (other == bNode) {
-                int oldA = this.beamLength;
-                int oldB = target.beamLength;
-                this.beamLength = len;
-                target.beamLength = len;
-                // 同步对端的缓存
-                if (target.connection == null) target.connection = this.connection;
-                if (this.level != null && oldA != this.beamLength) this.markForUpdate();
-                if (target.level != null && oldB != target.beamLength) target.markForUpdate();
-                return;
-            } else {
-                this.disconnect();
-            }
-        }
-
-        // 检查是否已经存在两节点之间的连接（可能由对端或先前 tick 创建）
-        var existing = aNode.getConnections().stream()
-                .filter(c -> c.getOtherSide(aNode) == bNode)
-                .findFirst()
-                .orElse(null);
-        if (existing == null) {
-            // 乐观创建，若另一端同时创建会抛 Already exists，忽略即可
-            try {
-                existing = GridHelper.createConnection(aNode, bNode);
-            } catch (IllegalStateException ignored) {
-                // 另一端可能已创建；重新查询一次获取现有连接
-                existing = aNode.getConnections().stream()
-                        .filter(c -> c.getOtherSide(aNode) == bNode)
-                        .findFirst()
-                        .orElse(null);
-                if (existing == null) {
-                    // 尚未建立，先缓存长度，等待下一 tick 再尝试
-                    int oldA = this.beamLength;
-                    this.beamLength = len;
-                    if (this.level != null && oldA != this.beamLength) this.markForUpdate();
-                    return;
-                }
-            }
-        }
-
-        // 缓存连接并刷新长度
-        this.connection = existing;
-        target.connection = existing;
-        int oldA = this.beamLength;
-        int oldB = target.beamLength;
-        this.beamLength = len;
-        target.beamLength = len;
-        if (this.level != null && oldA != this.beamLength) this.markForUpdate();
-        if (target.level != null && oldB != target.beamLength) target.markForUpdate();
+        // 客户端无需逻辑，渲染器会直接读取同步后的可视状态。
     }
 
     public void disconnect() {
-        if (this.connection != null) {
+        BeamFormerBlockEntity partner = other != null ? other : findConnectedPeer();
+        IGridConnection activeConnection = connection;
+
+        boolean selfChanged = clearRuntimeState();
+        boolean partnerChanged = false;
+        if (partner != null && (partner.other == this || partner.connection == activeConnection)) {
+            partnerChanged = partner.clearRuntimeState();
+        }
+
+        if (activeConnection != null) {
             try {
-                var myNode = this.getMainNode().getNode();
-                if (myNode != null) {
-                    var otherNode = this.connection.getOtherSide(myNode);
-                    if (otherNode != null) {
-                        var owner = otherNode.getOwner();
-                        if (owner instanceof BeamFormerBlockEntity otherBe) {
-                            int old = otherBe.beamLength;
-                            otherBe.beamLength = 0;
-                            if (otherBe.level != null && old != 0) otherBe.markForUpdate();
-                            // 对端状态同步回退为 ON（若仍为 BEAMING）
-                            var st = otherBe.getBlockState();
-                            if (!otherBe.isRemoved() && st.getValue(BeamFormerBlock.STATUS) == BeamFormerBlock.Status.BEAMING) {
-                                otherBe.level.setBlock(otherBe.getBlockPos(), st.setValue(BeamFormerBlock.STATUS, BeamFormerBlock.Status.ON), 3);
-                            }
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
+                activeConnection.destroy();
+            } catch (IllegalArgumentException | IllegalStateException ignored) {
             }
-            this.connection.destroy();
-            this.connection = null;
+        }
+
+        if (selfChanged) {
+            markVisualChanged();
+        }
+        if (partnerChanged) {
+            partner.markVisualChanged();
         }
     }
 
-    // ---- Client Sync: send beamLength to clients for BER rendering ----
     @Override
     protected void writeToStream(FriendlyByteBuf data) {
-        data.writeVarInt(this.beamLength);
-        data.writeBoolean(this.hideBeam);
+        super.writeToStream(data);
+        data.writeVarInt(beamLength);
+        data.writeBoolean(hideBeam);
     }
 
     @Override
     protected boolean readFromStream(FriendlyByteBuf data) {
-        int oldLength = this.beamLength;
-        boolean oldHide = this.hideBeam;
-        this.beamLength = data.readVarInt();
-        this.hideBeam = data.readBoolean();
-        return oldLength != this.beamLength || oldHide != this.hideBeam;
+        boolean changed = super.readFromStream(data);
+        int oldLength = beamLength;
+        boolean oldHide = hideBeam;
+        beamLength = data.readVarInt();
+        hideBeam = data.readBoolean();
+        return changed || oldLength != beamLength || oldHide != hideBeam;
     }
 
     @Override
     public void onChunkUnloaded() {
-        // 区块卸载时断开连接并确保客户端不会继续渲染
-        this.disconnect();
+        disconnect();
         super.onChunkUnloaded();
     }
 
     @Override
     public void setRemoved() {
-        // 保证在移除时清理连接，避免状态在客户端残留
+        disconnect();
         super.setRemoved();
-        this.disconnect();
     }
 
     @Override
-    public void saveAdditional(net.minecraft.nbt.CompoundTag tag) {
+    public void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
-        tag.putBoolean("hideBeam", this.hideBeam);
+        tag.putBoolean("hideBeam", hideBeam);
     }
 
     @Override
-    public void loadTag(net.minecraft.nbt.CompoundTag tag) {
+    public void loadTag(CompoundTag tag) {
         super.loadTag(tag);
-        this.hideBeam = tag.getBoolean("hideBeam");
+        beamLength = 0;
+        connection = null;
+        other = null;
+        hideBeam = tag.getBoolean("hideBeam");
     }
 
-    /**
-     * 重写渲染边界框以防止视锥体剔除导致的光束消失问题
-     */
     @OnlyIn(Dist.CLIENT)
     @Override
     public AABB getRenderBoundingBox() {
         BlockPos pos = getBlockPos();
-        BlockState state = getBlockState();
-        
-        if (!(state.getBlock() instanceof BeamFormerBlock)) {
-            // 默认较大边界框
-            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
-                           pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
-        }
-        
-        Direction dir = state.getValue(BeamFormerBlock.FACING);
-        int len = Math.max(0, this.beamLength);
-        
+        int len = Math.max(0, beamLength);
         if (len <= 0) {
-            // 没有光束时也使用较大边界框
-            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5, 
-                           pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
+            return new AABB(pos.getX() - 5, pos.getY() - 5, pos.getZ() - 5,
+                    pos.getX() + 6, pos.getY() + 6, pos.getZ() + 6);
         }
-        
+
+        Direction dir = getFacing();
         BlockPos endPos = pos.relative(dir, len);
-        
-        // 计算包含光束起点和终点的边界框
-        // 关键：渲染边界框必须覆盖整条光束，这样即使玩家只能看到光束中间部分，
-        // 至少有一个端点的BlockEntity会被触发渲染
         double minX = Math.min(pos.getX(), endPos.getX());
         double minY = Math.min(pos.getY(), endPos.getY());
         double minZ = Math.min(pos.getZ(), endPos.getZ());
         double maxX = Math.max(pos.getX() + 1, endPos.getX() + 1);
         double maxY = Math.max(pos.getY() + 1, endPos.getY() + 1);
         double maxZ = Math.max(pos.getZ() + 1, endPos.getZ() + 1);
-        
-        // 适度扩展以处理光束的粗细和视角边缘情况
-        // 不需要过大，因为边界框已经覆盖了整条光束
+
         double expansion = 2.0;
-        return new AABB(minX - expansion, minY - expansion, minZ - expansion, 
-                       maxX + expansion, maxY + expansion, maxZ + expansion);
+        return new AABB(minX - expansion, minY - expansion, minZ - expansion,
+                maxX + expansion, maxY + expansion, maxZ + expansion);
+    }
+
+    private boolean ensureConnection(BeamFormerBlockEntity target, int len) {
+        IGridNode myNode = getMainNode().getNode();
+        IGridNode otherNode = target.getMainNode().getNode();
+        if (myNode == null || otherNode == null) {
+            return false;
+        }
+
+        if (other != null && other != target) {
+            disconnect();
+        }
+        if (target.other != null && target.other != this) {
+            target.disconnect();
+        }
+
+        if (isConnectionToDifferentNode(connection, myNode, otherNode)) {
+            disconnect();
+        }
+        if (target.isConnectionToDifferentNode(target.connection, otherNode, myNode)) {
+            target.disconnect();
+        }
+
+        IGridConnection activeConnection = findConnection(myNode, otherNode);
+        if (activeConnection == null) {
+            try {
+                activeConnection = GridHelper.createConnection(myNode, otherNode);
+            } catch (IllegalStateException ignored) {
+                activeConnection = findConnection(myNode, otherNode);
+            }
+        }
+
+        if (activeConnection == null) {
+            return false;
+        }
+
+        connection = activeConnection;
+        other = target;
+        target.connection = activeConnection;
+        target.other = this;
+        return true;
+    }
+
+    private boolean hasConnectableTarget(@Nullable BeamFormerBlockEntity target) {
+        if (target == null || target == this || target.isRemoved()) {
+            return false;
+        }
+
+        return getMainNode().getNode() != null && target.getMainNode().getNode() != null;
+    }
+
+    private boolean hasActiveBeam(BeamFormerBlockEntity target) {
+        IManagedGridNode myManaged = getMainNode();
+        IManagedGridNode targetManaged = target.getMainNode();
+        return myManaged.isOnline()
+                && myManaged.isPowered()
+                && targetManaged.isOnline()
+                && targetManaged.isPowered();
+    }
+
+    private void applyVisualState(@Nullable BeamFormerBlockEntity target, int newLength) {
+        boolean selfChanged = beamLength != newLength;
+        beamLength = newLength;
+        if (selfChanged) {
+            markVisualChanged();
+        }
+
+        if (target != null) {
+            boolean targetChanged = target.beamLength != newLength;
+            target.beamLength = newLength;
+            if (targetChanged) {
+                target.markVisualChanged();
+            }
+        }
+    }
+
+    private void setBeamHidden(boolean hidden) {
+        boolean selfChanged = hideBeam != hidden;
+        hideBeam = hidden;
+        if (selfChanged) {
+            markVisualChanged();
+            setChanged();
+        }
+
+        BeamFormerBlockEntity partner = other != null ? other : findConnectedPeer();
+        if (partner != null && partner.hideBeam != hidden) {
+            partner.hideBeam = hidden;
+            partner.markVisualChanged();
+            partner.setChanged();
+        }
+    }
+
+    private void syncExposedBack(Direction back) {
+        if (lastExposedBack != back) {
+            getMainNode().setExposedOnSides(EnumSet.of(back));
+            lastExposedBack = back;
+        }
+    }
+
+    private void updateStatus(@Nullable BeamFormerBlockEntity target, BeamFormerBlock.Status status) {
+        updateOwnStatus(status);
+        if (target != null) {
+            target.updateOwnStatus(status);
+        }
+    }
+
+    private void updateOwnStatus(BeamFormerBlock.Status status) {
+        if (level == null || isRemoved()) {
+            return;
+        }
+
+        BlockState state = getBlockState();
+        if (state.getBlock() instanceof BeamFormerBlock && state.getValue(BeamFormerBlock.STATUS) != status) {
+            level.setBlock(getBlockPos(), state.setValue(BeamFormerBlock.STATUS, status), 3);
+        }
+    }
+
+    private ScanResult scanForTarget(Level level, BlockPos pos, Direction facing) {
+        BlockPos cursor = pos;
+
+        for (int i = 0; i < MAX_BEAM_RANGE; i++) {
+            cursor = cursor.relative(facing);
+            BlockState state = level.getBlockState(cursor);
+            var blockEntity = level.getBlockEntity(cursor);
+
+            if (state.canOcclude() && !state.isAir()) {
+                if (blockEntity instanceof BeamFormerBlockEntity otherBe) {
+                    Direction otherFacing = state.getValue(BeamFormerBlock.FACING);
+                    if (otherFacing == facing.getOpposite()) {
+                        return new ScanResult(otherBe, i);
+                    }
+                }
+                return ScanResult.NONE;
+            }
+
+            if (blockEntity instanceof BeamFormerBlockEntity otherBe) {
+                Direction otherFacing = otherBe.getFacing();
+                if (otherFacing == facing) {
+                    return ScanResult.NONE;
+                }
+                if (otherFacing == facing.getOpposite()) {
+                    return new ScanResult(otherBe, i + 1);
+                }
+            }
+        }
+
+        return ScanResult.NONE;
+    }
+
+    private Direction getFacing() {
+        return getBlockState().getValue(BeamFormerBlock.FACING);
+    }
+
+    private boolean clearRuntimeState() {
+        boolean changed = connection != null || other != null || beamLength != 0;
+        connection = null;
+        other = null;
+        beamLength = 0;
+        return changed;
+    }
+
+    @Nullable
+    private BeamFormerBlockEntity findConnectedPeer() {
+        IGridConnection activeConnection = connection;
+        IGridNode myNode = getMainNode().getNode();
+        if (activeConnection == null || myNode == null) {
+            return null;
+        }
+
+        try {
+            IGridNode otherNode = activeConnection.getOtherSide(myNode);
+            if (otherNode != null && otherNode.getOwner() instanceof BeamFormerBlockEntity otherBe) {
+                return otherBe;
+            }
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+        }
+
+        return null;
+    }
+
+    @Nullable
+    private IGridConnection findConnection(IGridNode aNode, IGridNode bNode) {
+        return aNode.getConnections().stream()
+                .filter(activeConnection -> getOtherSide(activeConnection, aNode) == bNode)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isConnectionToDifferentNode(@Nullable IGridConnection activeConnection, IGridNode selfNode,
+            IGridNode expectedOtherNode) {
+        if (activeConnection == null) {
+            return false;
+        }
+
+        IGridNode actualOtherNode = getOtherSide(activeConnection, selfNode);
+        return actualOtherNode != null && actualOtherNode != expectedOtherNode;
+    }
+
+    @Nullable
+    private IGridNode getOtherSide(IGridConnection activeConnection, IGridNode selfNode) {
+        try {
+            return activeConnection.getOtherSide(selfNode);
+        } catch (IllegalArgumentException | IllegalStateException ignored) {
+            return null;
+        }
+    }
+
+    private void markVisualChanged() {
+        if (level != null) {
+            markForUpdate();
+        }
+    }
+
+    private static final class ScanResult {
+        private static final ScanResult NONE = new ScanResult(null, 0);
+
+        @Nullable
+        private final BeamFormerBlockEntity target;
+        private final int length;
+
+        private ScanResult(@Nullable BeamFormerBlockEntity target, int length) {
+            this.target = target;
+            this.length = length;
+        }
     }
 }

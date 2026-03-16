@@ -1,0 +1,38 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"parent": "block/block",
+	"render_type": "cutout",
+	"texture_size": [64, 64],
+	"textures": {
+		"1": "me_beam_former:block/wireless_energy_tower_model",
+		"particle": "ae2:block/generics/back"
+	},
+	"elements": [
+		{
+			"name": "pillar",
+			"from": [6, 0, 6],
+			"to": [10, 12, 10],
+			"faces": {
+				"north": {"uv": [8, 2, 9, 5], "texture": "#1"},
+				"east": {"uv": [8, 2, 9, 5], "texture": "#1"},
+				"south": {"uv": [8, 2, 9, 5], "texture": "#1"},
+				"west": {"uv": [8, 2, 9, 5], "texture": "#1"}
+			}
+		},
+		{
+			"name": "top_base",
+			"from": [4, 12, 4],
+			"to": [12, 16, 12],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 8]},
+			"faces": {
+				"north": {"uv": [5, 9.75, 7, 10.75], "texture": "#1"},
+				"east": {"uv": [5, 9.75, 7, 10.75], "texture": "#1"},
+				"south": {"uv": [5, 9.75, 7, 10.75], "texture": "#1"},
+				"west": {"uv": [5, 9.75, 7, 10.75], "texture": "#1"},
+				"up": {"uv": [3, 8.75, 5, 10.75], "texture": "#1"},
+				"down": {"uv": [3, 8.75, 5, 10.75], "texture": "#1"}
+			}
+		}
+	]
+}
