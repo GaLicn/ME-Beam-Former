@@ -32,6 +32,8 @@ public final class BeamRenderHelper {
     private static final float CORE_ALPHA = 0.90f;
     private static final float CORE_WHITE_MIX = 0.16f;
     private static final double BLOCK_BEAM_SHIFT = -0.25d;
+    private static final double PART_BEAM_START_SHIFT = 11.0d / 16.0d;
+    private static final double PART_BEAM_LENGTH_TRIM = PART_BEAM_START_SHIFT * 2.0d;
 
     private BeamRenderHelper() {
     }
@@ -161,15 +163,25 @@ public final class BeamRenderHelper {
             return;
         }
 
+        final double visibleLength = Math.max(0.0d, length - PART_BEAM_LENGTH_TRIM);
+        if (visibleLength <= 1.0E-6d) {
+            return;
+        }
+
         poseStack.pushPose();
         poseStack.translate(0.5d, 0.5d, 0.5d);
+        poseStack.translate(
+                dir.getStepX() * PART_BEAM_START_SHIFT,
+                dir.getStepY() * PART_BEAM_START_SHIFT,
+                dir.getStepZ() * PART_BEAM_START_SHIFT
+        );
 
         renderBeamPrism(
                 poseStack,
                 buffers,
-                dir.getStepX() * length,
-                dir.getStepY() * length,
-                dir.getStepZ() * length,
+                dir.getStepX() * visibleLength,
+                dir.getStepY() * visibleLength,
+                dir.getStepZ() * visibleLength,
                 r,
                 g,
                 b,

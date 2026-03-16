@@ -61,9 +61,10 @@ public class BeamFormerPart extends AEBasePart implements IGridTickable {
 
     @Override
     public void getBoxes(IPartCollisionHelper bch) {
-        bch.addBox(5, 5, 16, 11, 11, 10);
-        bch.addBox(4, 4, 13, 12, 12, 11);
-        bch.addBox(7, 7, 20, 9, 9, 16);
+        // 新模型的主体更靠内，发射头会明显向外探出，用三段体积贴近实际轮廓。
+        bch.addBox(4, 4, 17, 12, 12, 11);
+        bch.addBox(5, 5, 19, 11, 11, 17);
+        bch.addBox(6, 6, 21, 10, 10, 19);
     }
 
     @Override

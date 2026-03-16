@@ -1,0 +1,93 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Client",
+      "presentation": {
+        "group": "Mod Development - ME-Beam-Former",
+        "order": 0
+      },
+      "projectName": "ME-Beam-Former",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\clientRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\clientRunVmArgs.txt",
+        "-Dfml.modFolders\u003dme_beam_former%%D:\\Project\\MC\\ME-Beam-Former\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Data",
+      "presentation": {
+        "group": "Mod Development - ME-Beam-Former",
+        "order": 1
+      },
+      "projectName": "ME-Beam-Former",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\dataRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\dataRunVmArgs.txt",
+        "-Dfml.modFolders\u003dme_beam_former%%D:\\Project\\MC\\ME-Beam-Former\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "GameTestServer",
+      "presentation": {
+        "group": "Mod Development - ME-Beam-Former",
+        "order": 2
+      },
+      "projectName": "ME-Beam-Former",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\gameTestServerRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\gameTestServerRunVmArgs.txt",
+        "-Dfml.modFolders\u003dme_beam_former%%D:\\Project\\MC\\ME-Beam-Former\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    },
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server",
+      "presentation": {
+        "group": "Mod Development - ME-Beam-Former",
+        "order": 3
+      },
+      "projectName": "ME-Beam-Former",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\serverRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@D:\\Project\\MC\\ME-Beam-Former\\build\\moddev\\serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003dme_beam_former%%D:\\Project\\MC\\ME-Beam-Former\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    }
+  ]
+}
