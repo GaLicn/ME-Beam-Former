@@ -15,6 +15,10 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBlockEntity> {
+    private static final double OMNI_CORE_CENTER_OFFSET = 3.5d / 16.0d;
+    private static final double BLOCK_BEAM_CENTER_OFFSET = 0.25d;
+    private static final double VECTOR_RENDER_SHIFT_COMPENSATION = 0.25d;
+
     public OmniBeamFormerBER(BlockEntityRendererProvider.Context ctx) {}
 
     @Override
@@ -57,48 +61,19 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         if (targets == null || targets.isEmpty()) return;
         
         Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
+        Vec3 sourceAnchor = getOmniBeamAnchor(pos, facing);
         
         float thickness = 0.08f;
         for (BlockPos t : targets) {
             BlockState targetState = level.getBlockState(t);
-            Direction targetFacing = Direction.SOUTH; // 默认朝向
-            
-            if (targetState.getBlock() instanceof BeamFormerBlock) {
-                targetFacing = targetState.getValue(BeamFormerBlock.FACING);
-            } else if (targetState.getBlock() instanceof OmniBeamFormerBlock) {
-                targetFacing = targetState.getValue(OmniBeamFormerBlock.FACING);
-            }
-            
-            float targetX = (float) t.getX() + 0.5f + targetFacing.getStepX() * 0.25f;
-            float targetY = (float) t.getY() + 0.5f + targetFacing.getStepY() * 0.25f;
-            float targetZ = (float) t.getZ() + 0.5f + targetFacing.getStepZ() * 0.25f;
-            
-            float startX = (float) pos.getX() + 0.5f + facing.getStepX() * 0.25f;
-            float startY = (float) pos.getY() + 0.5f + facing.getStepY() * 0.25f;
-            float startZ = (float) pos.getZ() + 0.5f + facing.getStepZ() * 0.25f;
-            
-            float vx = targetX - startX;
-            float vy = targetY - startY;
-            float vz = targetZ - startZ;
-            
-            double vectorLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
+            Vec3 targetAnchor = getTargetAnchor(t, targetState);
+            Vec3 beamVector = targetAnchor.subtract(sourceAnchor);
+
+            double vectorLength = beamVector.length();
             if (vectorLength <= 0.2) continue;
-            
-            float normalizedVx = (float) (vx / vectorLength);
-            float normalizedVy = (float) (vy / vectorLength);
-            float normalizedVz = (float) (vz / vectorLength);
-            
-            float adjustedStartX = startX + normalizedVx * 0.2f;
-            float adjustedStartY = startY + normalizedVy * 0.2f;
-            float adjustedStartZ = startZ + normalizedVz * 0.2f;
-            
-            float adjustedTargetX = targetX + normalizedVx * 0.1f;
-            float adjustedTargetY = targetY + normalizedVy * 0.1f;
-            float adjustedTargetZ = targetZ + normalizedVz * 0.1f;
-            
-            float adjustedVx = adjustedTargetX - adjustedStartX;
-            float adjustedVy = adjustedTargetY - adjustedStartY;
-            float adjustedVz = adjustedTargetZ - adjustedStartZ;
+
+            Vec3 normalized = beamVector.scale(1.0d / vectorLength);
+            Vec3 renderOrigin = sourceAnchor.add(normalized.scale(VECTOR_RENDER_SHIFT_COMPENSATION));
 
             float[] targetColor = BeamRenderHelper.resolveBlockEndpointColor(level, t);
             float[] beamColor = BeamRenderHelper.blendEndpointColors(sourceColor, targetColor);
@@ -106,17 +81,17 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
             poseStack.pushPose();
             
             poseStack.translate(
-                adjustedStartX - (pos.getX() + 0.5f), 
-                adjustedStartY - (pos.getY() + 0.5f), 
-                adjustedStartZ - (pos.getZ() + 0.5f)
+                renderOrigin.x - (pos.getX() + 0.5d), 
+                renderOrigin.y - (pos.getY() + 0.5d), 
+                renderOrigin.z - (pos.getZ() + 0.5d)
             );
             
             BeamRenderHelper.renderColoredBeamVector(
                     poseStack,
                     buffers,
-                    adjustedVx,
-                    adjustedVy,
-                    adjustedVz,
+                    (float) beamVector.x,
+                    (float) beamVector.y,
+                    (float) beamVector.z,
                     beamColor[0],
                     beamColor[1],
                     beamColor[2],
@@ -138,5 +113,29 @@ public class OmniBeamFormerBER implements BlockEntityRenderer<OmniBeamFormerBloc
         double dz = cameraPos.z - nearestZ;
         double maxDistanceSq = maxDistance * maxDistance;
         return dx * dx + dy * dy + dz * dz <= maxDistanceSq;
+    }
+
+    private static Vec3 getTargetAnchor(BlockPos pos, BlockState state) {
+        if (state.getBlock() instanceof BeamFormerBlock) {
+            Direction facing = state.getValue(BeamFormerBlock.FACING);
+            return getForwardAnchor(pos, facing, BLOCK_BEAM_CENTER_OFFSET);
+        }
+        if (state.getBlock() instanceof OmniBeamFormerBlock) {
+            Direction facing = state.getValue(OmniBeamFormerBlock.FACING);
+            return getOmniBeamAnchor(pos, facing);
+        }
+        return Vec3.atCenterOf(pos);
+    }
+
+    private static Vec3 getOmniBeamAnchor(BlockPos pos, Direction facing) {
+        return getForwardAnchor(pos, facing, OMNI_CORE_CENTER_OFFSET);
+    }
+
+    private static Vec3 getForwardAnchor(BlockPos pos, Direction direction, double offset) {
+        return new Vec3(
+                pos.getX() + 0.5d + direction.getStepX() * offset,
+                pos.getY() + 0.5d + direction.getStepY() * offset,
+                pos.getZ() + 0.5d + direction.getStepZ() * offset
+        );
     }
 }
