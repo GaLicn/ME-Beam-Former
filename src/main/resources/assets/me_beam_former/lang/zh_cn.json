@@ -6,6 +6,8 @@
   "block.me_beam_former.wireless_energy_tower": "无线能源感应塔",
   "item.me_beam_former.beam_former_part": "ME 光束成型器",
   "item.me_beam_former.laser_binding_tool": "光束绑定器",
+  "key.categories.me_beam_former": "ME Beam Former",
+  "key.me_beam_former.toggle_range_binding": "切换范围绑定模式",
 
   "tooltip.me_beam_former.beam_former_part": "用于在 ME 网络内发射/接收能量光束",
   "tooltip.me_beam_former.beam_former_block": "仅背面可连接线缆；需两个相对放置以形成光束",
@@ -26,5 +28,10 @@
   "tooltip.me_beam_former.binding.invalid": "源成型器无效或已不存在",
   "tooltip.me_beam_former.binding.no_source": "请先用 Shift+右键 选定源成型器",
   "tooltip.me_beam_former.binding.self_link": "不能连接到自己",
-  "tooltip.me_beam_former.binding.out_of_range": "连接距离超出范围！限制：水平16x16，垂直32格"
+  "tooltip.me_beam_former.binding.out_of_range": "连接距离超出范围！限制：水平16x16，垂直32格",
+  "tooltip.me_beam_former.binding.range_mode_enabled": "范围绑定模式已开启",
+  "tooltip.me_beam_former.binding.range_mode_disabled": "范围绑定模式已关闭",
+  "tooltip.me_beam_former.binding.range_start_set": "已设置范围起点：(%s, %s, %s)",
+  "tooltip.me_beam_former.binding.range_no_targets": "选区内未找到可绑定的机器",
+  "tooltip.me_beam_former.binding.range_completed": "范围绑定完成：新增 %s 台，已存在 %s 台，范围内共找到 %s 台可绑定机器"
 }

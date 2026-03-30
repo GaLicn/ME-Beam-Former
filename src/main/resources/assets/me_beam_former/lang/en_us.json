@@ -6,6 +6,8 @@
   "block.me_beam_former.wireless_energy_tower": "Wireless Energy Induction Tower",
   "item.me_beam_former.beam_former_part": "ME Beam Former",
   "item.me_beam_former.laser_binding_tool": "Laser Binding Tool",
+  "key.categories.me_beam_former": "ME Beam Former",
+  "key.me_beam_former.toggle_range_binding": "Toggle Area Binding Mode",
 
   "tooltip.me_beam_former.beam_former_part": "Used to emit/receive energy beams within ME networks",
   "tooltip.me_beam_former.beam_former_block": "Only back face can connect cables; requires two opposite placement to form beam",
@@ -26,5 +28,10 @@
   "tooltip.me_beam_former.binding.invalid": "Source beam former is invalid or no longer exists",
   "tooltip.me_beam_former.binding.no_source": "Please use Shift+Right Click to select source beam former first",
   "tooltip.me_beam_former.binding.self_link": "Cannot connect to itself",
-  "tooltip.me_beam_former.binding.out_of_range": "Connection distance out of range! Limit: 16x16 horizontal, 32 vertical"
-} 
+  "tooltip.me_beam_former.binding.out_of_range": "Connection distance out of range! Limit: 16x16 horizontal, 32 vertical",
+  "tooltip.me_beam_former.binding.range_mode_enabled": "Area binding mode enabled",
+  "tooltip.me_beam_former.binding.range_mode_disabled": "Area binding mode disabled",
+  "tooltip.me_beam_former.binding.range_start_set": "Area start set: (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.range_no_targets": "No bindable machines were found in the selected area",
+  "tooltip.me_beam_former.binding.range_completed": "Area binding complete: %s newly linked, %s already linked, %s bindable machines found"
+}

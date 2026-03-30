@@ -34,16 +34,19 @@ import appeng.items.parts.PartModelsHelper; // 从 @PartModels 收集模型
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import com.mebeamformer.block.BeamFormerBlock;
 import com.mebeamformer.blockentity.BeamFormerBlockEntity;
+import com.mebeamformer.client.LaserBindingToolKeyMappings;
 import com.mebeamformer.client.render.BeamFormerBER;
 import com.mebeamformer.block.OmniBeamFormerBlock;
 import com.mebeamformer.blockentity.OmniBeamFormerBlockEntity;
 import com.mebeamformer.client.render.OmniBeamFormerBER;
 import com.mebeamformer.item.LaserBindingTool;
+import com.mebeamformer.network.ToggleRangeBindingModePacket;
 import com.mebeamformer.block.WirelessEnergyTowerBlock;
 import com.mebeamformer.blockentity.WirelessEnergyTowerBlockEntity;
 import com.mebeamformer.client.render.WirelessEnergyTowerRenderer;
 import com.mebeamformer.block.EnergyNetworkMonitorBlock;
 import com.mebeamformer.blockentity.EnergyNetworkMonitorBlockEntity;
+import net.minecraftforge.fml.loading.FMLEnvironment;
 
 // The value here should match an entry in the META-INF/mods.toml file
 @Mod(ME_Beam_Former.MODID)
@@ -169,12 +172,19 @@ public class ME_Beam_Former {
         } catch (Throwable t) {
             LOGGER.error("Failed to register AE2 part models for BeamFormerPart", t);
         }
+
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            modEventBus.addListener(LaserBindingToolKeyMappings::register);
+            MinecraftForge.EVENT_BUS.addListener(LaserBindingToolKeyMappings::onClientTick);
+        }
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         // 绑定 AEBaseEntityBlock 的方块实体类型与 tickers
         event.enqueueWork(() -> {
             try {
+                ToggleRangeBindingModePacket.register();
+
                 if (BEAM_FORMER_BLOCK.get() instanceof BeamFormerBlock bf) {
                     bf.setBlockEntity(
                             com.mebeamformer.blockentity.BeamFormerBlockEntity.class,

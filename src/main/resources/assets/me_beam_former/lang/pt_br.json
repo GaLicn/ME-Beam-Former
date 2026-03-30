@@ -6,6 +6,8 @@
   "block.me_beam_former.wireless_energy_tower": "Torre de Indução de Energia Sem Fio",
   "item.me_beam_former.beam_former_part": "Formador de Feixe ME",
   "item.me_beam_former.laser_binding_tool": "Ferramenta de Vinculação a Laser",
+  "key.categories.me_beam_former": "ME Beam Former",
+  "key.me_beam_former.toggle_range_binding": "Alternar modo de vinculação em área",
 
   "tooltip.me_beam_former.beam_former_part": "Usado para emitir/receber feixes de energia dentro de redes ME",
   "tooltip.me_beam_former.beam_former_block": "Apenas a face traseira conecta cabos; requer duas colocações opostas para formar o feixe",
@@ -26,5 +28,10 @@
   "tooltip.me_beam_former.binding.invalid": "Formador de feixe de origem inválido ou não existe mais",
   "tooltip.me_beam_former.binding.no_source": "Por favor, use shift + clique direito para selecionar o formador de feixe de origem primeiro",
   "tooltip.me_beam_former.binding.self_link": "Não é possível conectar a si mesmo",
-  "tooltip.me_beam_former.binding.out_of_range": "Distância de conexão fora de alcance! Limite: 20x20 horizontal, 32 vertical"
+  "tooltip.me_beam_former.binding.out_of_range": "Distância de conexão fora de alcance! Limite: 20x20 horizontal, 32 vertical",
+  "tooltip.me_beam_former.binding.range_mode_enabled": "Modo de vinculação em área ativado",
+  "tooltip.me_beam_former.binding.range_mode_disabled": "Modo de vinculação em área desativado",
+  "tooltip.me_beam_former.binding.range_start_set": "Início da área definido: (%s, %s, %s)",
+  "tooltip.me_beam_former.binding.range_no_targets": "Nenhuma máquina vinculável foi encontrada na área selecionada",
+  "tooltip.me_beam_former.binding.range_completed": "Vinculação em área concluída: %s novas, %s já vinculadas, %s máquinas vinculáveis encontradas"
 }
